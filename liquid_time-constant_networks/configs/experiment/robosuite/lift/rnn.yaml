@@ -1,0 +1,33 @@
+# @package _global_
+defaults:
+  - /trainer: default
+  - /model: default
+  - /loader: default
+  - /dataset: robomimic_lift_lowdim
+  - /task: regression
+  - /optimizer: adamw
+  - /scheduler: cosine_warmup
+
+encoder: 
+  _name_: linear
+
+decoder:
+  _name_: linear
+  
+model:
+  dropout: 0.0
+  n_layers: 1
+  d_model: 224  
+  prenorm: true
+  norm: layer
+
+loader:
+  batch_size: 256
+
+optimizer:
+  lr: 0.001
+
+scheduler:
+  num_warmup_steps: 100
+  num_training_steps: 1500
+
