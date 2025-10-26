@@ -22,3 +22,14 @@ source robomimic_venv/bin/activate
 
 # 必要なパッケージのインストール
 pip install -r requirements.txt
+
+```
+## 報酬系
+/robosuite/enviroments/manipulation/下のpythonファイルにてreward関数で定義
+例）Liftタスク（1ステップ）
+・Reaching：グリッパーと物体の距離に応じて定義（0-1.0）
+・Grasping：物体の把持（0.25）
+・Lifting：物体がテーブルから4cm以上浮いている（0.5）
+・High Lift：物体がテーブルから15cm以上浮いている（1.0）
+・Success：タスクが成功条件を満たしている（2.0）
+

@@ -65,16 +65,27 @@ def get_object_height_from_obs(obs):
     return None
 
 def write_csv_row(csv_path: str, row: dict):
-    """Append a row to csv. Write header if file not exists."""
     csv_path = Path(csv_path)
-    header = list(row.keys())
-    exists = csv_path.exists()
     csv_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if not csv_path.exists():
+        fieldnames = list(row.keys())
+    else:
+        # 既存ヘッダ読み込み
+        with open(csv_path, "r", newline="") as f:
+            reader = csv.DictReader(f)
+            fieldnames = reader.fieldnames or list(row.keys())
+
+    # 足りないキーは追加（空文字で埋める）
+    for k in fieldnames:
+        row.setdefault(k, "")
+
     with open(csv_path, "a", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=header)
-        if not exists:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        if not csv_path.exists() or f.tell() == 0:
             writer.writeheader()
         writer.writerow(row)
+
 
 def main():
     args = parse_args()

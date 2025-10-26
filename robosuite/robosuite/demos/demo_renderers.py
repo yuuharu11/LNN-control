@@ -99,6 +99,7 @@ if __name__ == "__main__":
         use_camera_obs=False,  # no camera observations
         control_freq=20,
         renderer=renderer,
+        use_egl=True,
     )
 
     env.reset()
