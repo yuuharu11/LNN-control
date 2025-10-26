@@ -1,36 +1,38 @@
 # Environment Setup Guide for LTC Training with Robomimic/Robosuite
 
 ## Quick Start
+### 1. Install MiniConda
+```bash
+apt install wget
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh
+bash /tmp/miniconda.sh -b -p $HOME/miniconda3
+$HOME/miniconda3/bin/conda init bash
+source $HOME/.bashrc && conda --version
+```
 
-### 1. Create Conda Environment
+### 2. Create Conda Environment
 
 ```bash
 conda create -n robomimic_venv python=3.10
 conda activate robomimic_venv
 ```
 
-### 2. Install PyTorch with CUDA Support
-
-**For CUDA 12.1:**
+### 3. Install Dependencies
 ```bash
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+pip install robosuite
+apt update
+apt install -y libgl1-mesa-glx libglib2.0-0 libsm6 libxext6 libxrender-dev libgomp1 libosmesa6-dev
 ```
 
-**For CUDA 11.8:**
+### 3.1 Fix libstdc++ compatibility for OSMesa rendering
 ```bash
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-```
+# Option 1: Update conda's libstdc++ (Recommended)
+conda install -c conda-forge libstdcxx-ng
 
-**For CPU only:**
-```bash
-pip install torch torchvision torchaudio
-```
-
-### 3. Install Core Dependencies
-
-```bash
-cd /work/liquid_time-constant_networks
-pip install -r requirements.txt
+# Option 2: Prioritize system libraries (Alternative)
+# Add to ~/.bashrc:
+echo 'export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH' >> ~/.bashrc
+source ~/.bashrc
 ```
 
 ### 4. Install Robomimic and Robosuite from Source
@@ -93,8 +95,19 @@ Then install the matching PyTorch version from https://pytorch.org/get-started/l
 
 ### Issue: EGL/OSMesa rendering errors
 
-**Solution:**
-For training (no rendering needed), use:
+**Solution 1: Use OSMesa (Software Rendering)**
+```bash
+# Install OSMesa
+apt install -y libosmesa6-dev
+
+# Update libstdc++ for compatibility
+conda install -c conda-forge libstdcxx-ng
+
+# Verify
+python -c "import os; os.environ['MUJOCO_GL']='osmesa'; os.environ['PYOPENGL_PLATFORM']='osmesa'; import mujoco; print('OSMesa OK')"
+```
+
+**Solution 2: No rendering mode (for training without camera obs)**
 ```python
 env = suite.make(
     "Lift",
@@ -103,6 +116,21 @@ env = suite.make(
     use_camera_obs=False,
 )
 ```
+
+**Solution 3: Enable EGL with GPU (requires Docker restart)**
+```bash
+# Re-run Docker container with DRI device access:
+docker run --gpus all --device=/dev/dri:/dev/dri -it -v /work:/work your-image
+
+# Then set environment:
+export MUJOCO_GL=egl
+export PYOPENGL_PLATFORM=egl
+```
+
+**Note**: Current Docker environment doesn't have `/dev/dri` devices, so:
+- EGL with GPU acceleration is **not available** without container restart
+- OSMesa (CPU rendering) is the **recommended option** for current setup
+- No-rendering mode works for **training without visual observations**
 
 ### Issue: Protobuf version conflicts
 

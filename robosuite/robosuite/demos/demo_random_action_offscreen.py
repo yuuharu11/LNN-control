@@ -8,10 +8,6 @@ MAX_FR = 25  # max frame rate for running simulation
 
 if __name__ == "__main__":
 
-    # オフスクリーン用の環境変数を設定（EGLエラー回避）
-    os.environ.setdefault("MUJOCO_GL", "osmesa")
-    os.environ.setdefault("PYOPENGL_PLATFORM", "osmesa")
-
     # Create dict to hold options that will be passed to env creation call
     options = {}
 
