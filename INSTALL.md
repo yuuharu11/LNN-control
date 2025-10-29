@@ -19,9 +19,18 @@ conda activate robomimic_venv
 
 ### 3. Install Dependencies
 ```bash
+# Install robosuite
 pip install robosuite
+
+# Install system libraries
 apt update
-apt install -y libgl1-mesa-glx libglib2.0-0 libsm6 libxext6 libxrender-dev libgomp1 libosmesa6-dev
+apt install -y libgl1-mesa-glx libglib2.0-0 libsm6 libxext6 libxrender-dev libgomp1
+
+# For EGL (GPU rendering - recommended if /dev/dri exists)
+apt install -y libegl1-mesa libegl1-mesa-dev libgles2-mesa-dev
+
+# For OSMesa (CPU rendering - fallback option)
+apt install -y libosmesa6-dev
 ```
 
 ### 3.1 Fix libstdc++ compatibility for OSMesa rendering
@@ -95,7 +104,25 @@ Then install the matching PyTorch version from https://pytorch.org/get-started/l
 
 ### Issue: EGL/OSMesa rendering errors
 
-**Solution 1: Use OSMesa (Software Rendering)**
+**Solution 1: Use EGL with GPU (Recommended - Fast)**
+```bash
+# Verify DRI devices are available
+ls -la /dev/dri/  # Should show renderD128, card0, etc.
+
+# Set environment variables for EGL
+export MUJOCO_GL=egl
+export PYOPENGL_PLATFORM=egl
+
+# Add to ~/.bashrc for persistence
+echo 'export MUJOCO_GL=egl' >> ~/.bashrc
+echo 'export PYOPENGL_PLATFORM=egl' >> ~/.bashrc
+source ~/.bashrc
+
+# Verify
+python -c "import os; os.environ['MUJOCO_GL']='egl'; os.environ['PYOPENGL_PLATFORM']='egl'; import mujoco; print('✅ EGL OK - GPU rendering enabled')"
+```
+
+**Solution 2: Use OSMesa (Software Rendering - Slower but works anywhere)**
 ```bash
 # Install OSMesa
 apt install -y libosmesa6-dev
@@ -103,11 +130,15 @@ apt install -y libosmesa6-dev
 # Update libstdc++ for compatibility
 conda install -c conda-forge libstdcxx-ng
 
+# Set environment variables
+export MUJOCO_GL=osmesa
+export PYOPENGL_PLATFORM=osmesa
+
 # Verify
-python -c "import os; os.environ['MUJOCO_GL']='osmesa'; os.environ['PYOPENGL_PLATFORM']='osmesa'; import mujoco; print('OSMesa OK')"
+python -c "import os; os.environ['MUJOCO_GL']='osmesa'; os.environ['PYOPENGL_PLATFORM']='osmesa'; import mujoco; print('✅ OSMesa OK - CPU rendering')"
 ```
 
-**Solution 2: No rendering mode (for training without camera obs)**
+**Solution 3: No rendering mode (for training without camera obs)**
 ```python
 env = suite.make(
     "Lift",
@@ -117,20 +148,12 @@ env = suite.make(
 )
 ```
 
-**Solution 3: Enable EGL with GPU (requires Docker restart)**
-```bash
-# Re-run Docker container with DRI device access:
-docker run --gpus all --device=/dev/dri:/dev/dri -it -v /work:/work your-image
-
-# Then set environment:
-export MUJOCO_GL=egl
-export PYOPENGL_PLATFORM=egl
-```
-
-**Note**: Current Docker environment doesn't have `/dev/dri` devices, so:
-- EGL with GPU acceleration is **not available** without container restart
-- OSMesa (CPU rendering) is the **recommended option** for current setup
-- No-rendering mode works for **training without visual observations**
+**Rendering Backend Comparison:**
+| Backend | Speed | GPU | Requirements |
+|---------|-------|-----|--------------|
+| EGL | ⚡⚡⚡ Fast | ✅ Yes | `/dev/dri` devices |
+| OSMesa | 🐌 Slow | ❌ CPU only | `libosmesa6-dev` |
+| No render | ⚡⚡⚡ Fastest | N/A | None (no visual obs) |
 
 ### Issue: Protobuf version conflicts
 

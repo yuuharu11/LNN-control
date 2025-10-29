@@ -1,8 +1,6 @@
 # @package _global_
-
-_name_: cnn_har
+_name_: cnn
 
 d_model: 9   
 d_output: 6   
-
 n_hidden: 128 

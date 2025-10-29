@@ -1,5 +1,11 @@
 import time
 import os
+
+# ⚠️ 重要: robosuiteをインポートする前に環境変数を設定
+# EGL (GPU) または OSMesa (CPU) を選択
+os.environ["MUJOCO_GL"] = "egl"  # GPU高速レンダリング (DRI必要) または "osmesa" (CPU)
+os.environ["PYOPENGL_PLATFORM"] = "egl"  # または "osmesa"
+
 import numpy as np
 from robosuite.robots import MobileRobot
 from robosuite.utils.input_utils import *

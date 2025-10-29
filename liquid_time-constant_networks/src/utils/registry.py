@@ -9,8 +9,8 @@ scheduler = {
 
 model = {
     "sequence": "src.models.sequence.SequenceModel",
-    "cnn_pamap2": "src.models.sequence.cnns.cnn_pamap2.CNN_PAMAP2",
     "cnn_har": "src.models.sequence.cnns.cnn_har.CNN_UCI",
+    "cnn": "src.models.sequence.cnns.cnn.CNN",
     "pnn": "src.models.sequence.pnn.PNN",
     "cfc": "src.models.ncps.cfc.CfC",
 }

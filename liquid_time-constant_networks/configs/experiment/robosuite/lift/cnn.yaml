@@ -1,7 +1,7 @@
 # @package _global_
 defaults:
   - /trainer: default
-  - /model: ncps_ltc
+  - /model: cnn
   - /loader: default
   - /dataset: robomimic_lift_lowdim
   - /task: regression
@@ -12,29 +12,23 @@ train:
   monitor: val/mse
   mode: min
 
-# 直接入力
-encoder: 
-  _name_: id
-  
-decoder:
-  _name_: id
-
 model:
-  d_model: 19
-  layer:
-    units: 
-    - name: AutoNCP
-    - units: 110
-    - output_units: 7
-    #- sparsity_level: ${sparsity_level}
+  _name_: cnn
+  d_model: 9
+  d_output: 6
 
 loader:
-  batch_size: 128    
+  batch_size: 200   
 
 optimizer:
-  lr: 5e-3
-  weight_decay: 0.01
+  lr: 1e-4
 
 scheduler:
   num_warmup_steps: 100
   num_training_steps: 1500
+
+decoder:
+  _name_: linear
+
+encoder: 
+  _name_: linear
