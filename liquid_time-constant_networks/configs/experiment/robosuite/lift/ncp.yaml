@@ -14,10 +14,10 @@ train:
 
 # 直接入力
 encoder: 
-  _name_: id
+  _name_: linear
   
 decoder:
-  _name_: id
+  _name_: linear
 
 model:
   d_model: 19
@@ -26,6 +26,7 @@ model:
     - name: AutoNCP
     - units: 110
     - output_units: 7
+    - input_size: 19
     #- sparsity_level: ${sparsity_level}
 
 loader:

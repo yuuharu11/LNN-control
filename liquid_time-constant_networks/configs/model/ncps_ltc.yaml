@@ -4,7 +4,6 @@ defaults:
 _name_: sequence
 
 n_layers: 1
-d_model: 28
 prenorm: true
 transposed: false
 pool:
