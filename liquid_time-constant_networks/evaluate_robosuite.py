@@ -39,6 +39,8 @@ def parse_args():
     p.add_argument("--render", action="store_true", help="Render to screen (requires display)")
     p.add_argument("--csv_out", type=str, default=None, help="CSV file to append results (optional)")
     p.add_argument("--seed", type=int, default=0, help="seed for logging/recording")
+    p.add_argument("--control_freq", type=int, default=20, help="Control frequency for the environment")
+    p.add_argument("--seq_len", type=int, default=10, help="Sequence length for model input")
     return p.parse_args()
 
 def get_object_height_from_obs(obs):
@@ -115,7 +117,7 @@ def main():
             reward_shaping=True,
             use_object_obs=True,
             horizon=args.max_steps,
-            control_freq=20,
+            control_freq=args.control_freq,
         )
     except Exception as e:
         # If offscreen initialisation fails (EGL issues), fall back to no-video mode and warn.
@@ -130,7 +132,7 @@ def main():
             reward_shaping=True,
             use_object_obs=True,
             horizon=args.max_steps,
-            control_freq=20,
+            control_freq=args.control_freq,
         )
 
     # metrics accumulators
@@ -140,7 +142,7 @@ def main():
     gpu_mem_list = []
     successes = []
 
-    seq_len = 10  # fixed sequence length used at training
+    seq_len = args.seq_len
     print(f"✅ Starting {args.num_rollouts} rollouts (seq_len={seq_len})")
 
     # for video
