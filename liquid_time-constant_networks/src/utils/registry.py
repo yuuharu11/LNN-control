@@ -31,6 +31,7 @@ layer = {
     "cfc": "src.models.ncps.cfc.CfC",
     "wired_cfc": "src.models.ncps.wired_cfc.WiredCfC",
     "cnn": "src.models.sequence.cnns.cnn.CNN",
+    "mlp": "src.models.sequence.mlps.mlp.MLP",
 }
 
 cell = {

@@ -1,13 +1,13 @@
-# @package _group_
 # @package _global_
 defaults:
   - /trainer: default
-  - /model: lstm
+  - /model: mlp
   - /loader: default
   - /dataset: robomimic_lift_lowdim
   - /task: regression
   - /optimizer: adamw
   - /scheduler: cosine_warmup
+
 
 train:
   monitor: val/mse
@@ -15,14 +15,14 @@ train:
 
 encoder: 
   _name_: linear
-  
+
 decoder:
   _name_: linear
-
+  
 model:
-  dropout: 0.2
+  dropout: 0.0
   n_layers: 1
-  d_model: 112  
+  d_model: 128
   prenorm: true
   norm: layer
 
@@ -30,10 +30,9 @@ loader:
   batch_size: 256
 
 optimizer:
-  lr: 5e-3
-  weight_decay: 0.05
+  lr: 0.001
 
 scheduler:
-  num_training_steps: 1500
   num_warmup_steps: 100
+  num_training_steps: 1500
 

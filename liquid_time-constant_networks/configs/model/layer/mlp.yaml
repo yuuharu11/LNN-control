@@ -1,0 +1,11 @@
+_name_: mlp
+
+d_hidden:  ${model.d_model}
+
+# 活性化関数
+activation: relu  # 'relu' または 'gelu'
+
+# MLP内部の層の数
+n_layers: 2
+dropout: 0.0
+transposed: ${model.transposed}
