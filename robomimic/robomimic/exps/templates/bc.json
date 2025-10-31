@@ -1,13 +1,21 @@
 {
     "algo_name": "bc",
     "experiment": {
-        "name": "test",
-        "validate": false,
+        "name": "bc_mlp_baseline",
+        "validate": true,
         "logging": {
             "terminal_output_to_txt": true,
-            "log_tb": true,
-            "log_wandb": false,
-            "wandb_proj_name": "debug"
+            "log_tb": false,
+            "log_wandb": true,
+            "wandb_proj_name": "robomimic_baseline",
+            "wandb_run_name":"bc_default",
+            "wandb_tags": [                
+                "bc",
+                "lift",
+                "low_dim",
+                "baseline",
+                "ph_dataset"
+            ]
         },
         "save": {
             "enabled": true,
@@ -45,9 +53,9 @@
         "hdf5_cache_mode": "all",
         "hdf5_use_swmr": true,
         "hdf5_load_next_obs": false,
-        "hdf5_normalize_obs": false,
-        "hdf5_filter_key": null,
-        "hdf5_validation_filter_key": null,
+        "hdf5_normalize_obs": true,
+        "hdf5_filter_key": "train",
+        "hdf5_validation_filter_key": "valid",
         "seq_length": 1,
         "pad_seq_length": true,
         "frame_stack": 1,
@@ -68,19 +76,22 @@
         "goal_mode": null,
         "cuda": true,
         "batch_size": 100,
-        "num_epochs": 2000,
+        "num_epochs": 1000,
         "seed": 1,
         "max_grad_norm": null
     },
     "algo": {
         "optim_params": {
             "policy": {
-                "optimizer_type": "adam",
+                "optimizer_type": "adamw",
                 "learning_rate": {
                     "initial": 0.0001,
                     "decay_factor": 0.1,
                     "epoch_schedule": [],
-                    "scheduler_type": "multistep"
+                    "scheduler_type": "cosine",
+                    "step_every_batch": true,
+                    "num_cycles": 0.5,
+                    "warmup_steps": 500
                 },
                 "regularization": {
                     "L2": 0.0

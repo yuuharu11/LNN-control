@@ -36,6 +36,11 @@ class PrintLogger(object):
         # ensure stdout gets flushed
         self.terminal.flush()
 
+    def isatty(self):
+        # Return whether the underlying terminal is a TTY
+        # This is needed for compatibility with libraries like wandb
+        return self.terminal.isatty()
+
 
 class DataLogger(object):
     """
@@ -75,12 +80,14 @@ class DataLogger(object):
                     self._wandb_logger = wandb
 
                     self._wandb_logger.init(
-                        entity=Macros.WANDB_ENTITY,
                         project=config.experiment.logging.wandb_proj_name,
-                        name=config.experiment.name,
+                        name=config.experiment.logging.wandb_run_name,
+                        tags=config.experiment.logging.wandb_tags,
                         dir=log_dir,
                         mode=("offline" if attempt == num_attempts - 1 else "online"),
                     )
+
+                    print("wandb initialized (attempt #{})".format(attempt + 1))
 
                     # set up info for identifying experiment
                     wandb_config = {k: v for (k, v) in config.meta.items() if k not in ["hp_keys", "hp_values"]}

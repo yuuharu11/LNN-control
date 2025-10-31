@@ -41,6 +41,16 @@ from robomimic.config import config_factory
 from robomimic.algo import algo_factory, RolloutPolicy
 from robomimic.utils.log_utils import PrintLogger, DataLogger, flush_warnings
 
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, message=".*UnsupportedFieldAttributeWarning.*")
+
+# ===== OSMesa レンダリングを有効化 =====
+os.environ['MUJOCO_GL'] = 'osmesa'
+os.environ['PYOPENGL_PLATFORM'] = 'osmesa'
+
+# TensorFlow の警告を抑制（オプション）
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 def train(config, device, resume=False):
     """
@@ -458,6 +468,63 @@ def train(config, device, resume=False):
         data_logger.record("System/RAM Usage (MB)", mem_usage, epoch)
         print("\nEpoch {} Memory Usage: {} MB\n".format(epoch, mem_usage))
 
+        # Add log GPU memory usage in MB
+        if device.type == 'cuda':
+            # PyTorch CUDA メモリ統計
+            gpu_mem_allocated = int(torch.cuda.memory_allocated(device) / (1024**2))
+            gpu_mem_reserved = int(torch.cuda.memory_reserved(device) / (1024**2))
+            gpu_mem_peak = int(torch.cuda.max_memory_allocated(device) / (1024**2))
+            
+            data_logger.record("System/GPU Memory Allocated (MB)", gpu_mem_allocated, epoch)
+            data_logger.record("System/GPU Memory Reserved (MB)", gpu_mem_reserved, epoch)
+            data_logger.record("System/GPU Memory Peak (MB)", gpu_mem_peak, epoch)
+            
+            print("GPU Memory: Allocated={} MB, Reserved={} MB, Peak={} MB".format(
+                gpu_mem_allocated, gpu_mem_reserved, gpu_mem_peak
+            ))
+
+            # detail info from nvidia-smi
+            try:
+                import nvidia_smi
+                nvidia_smi.nvmlInit()
+                
+                device_index = device.index if device.index is not None else 0
+                handle = nvidia_smi.nvmlDeviceGetHandleByIndex(device_index)
+                
+                # メモリ情報
+                info = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
+                gpu_mem_used = int(info.used / (1024**2))
+                gpu_mem_total = int(info.total / (1024**2))
+                gpu_mem_free = int(info.free / (1024**2))
+                
+                data_logger.record("System/GPU Memory Used (MB)", gpu_mem_used, epoch)
+                data_logger.record("System/GPU Memory Total (MB)", gpu_mem_total, epoch)
+                data_logger.record("System/GPU Memory Free (MB)", gpu_mem_free, epoch)
+                
+                # GPU使用率
+                utilization = nvidia_smi.nvmlDeviceGetUtilizationRates(handle)
+                gpu_util = utilization.gpu
+                gpu_mem_util = utilization.memory
+                
+                data_logger.record("System/GPU Utilization (%)", gpu_util, epoch)
+                data_logger.record("System/GPU Memory Utilization (%)", gpu_mem_util, epoch)
+                
+                # 温度
+                temp = nvidia_smi.nvmlDeviceGetTemperature(handle, nvidia_smi.NVML_TEMPERATURE_GPU)
+                data_logger.record("System/GPU Temperature (C)", temp, epoch)
+                
+                # 電力
+                power = nvidia_smi.nvmlDeviceGetPowerUsage(handle) / 1000.0  # mW to W
+                data_logger.record("System/GPU Power (W)", round(power, 2), epoch)
+                
+                print("GPU Utilization: {}%, Memory Utilization: {}%".format(gpu_util, gpu_mem_util))
+                print("GPU Temperature: {}C, Power: {:.1f}W".format(temp, power))
+                
+                nvidia_smi.nvmlShutdown()
+            except Exception as e:
+                # nvidia-smi が使えない場合はスキップ
+                pass
+            
     # terminate logging
     data_logger.close()
 
@@ -469,7 +536,7 @@ def main(args):
         config = config_factory(ext_cfg["algo_name"])
         # update config with external json - this will throw errors if
         # the external config has keys not present in the base algo config
-        with config.values_unlocked():
+        with config.unlocked():
             config.update(ext_cfg)
     else:
         config = config_factory(args.algo)

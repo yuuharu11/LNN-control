@@ -3,7 +3,7 @@ import h5py
 import numpy as np
 
 # データセットのパス
-dataset_path = "/work/robomimic/datasets/lift/mg/low_dim_sparse_v15.hdf5"
+dataset_path = "/work/robomimic/datasets/lift/ph/low_dim_v15.hdf5"
 
 # HDF5 ファイルを開く
 with h5py.File(dataset_path, "r") as f:

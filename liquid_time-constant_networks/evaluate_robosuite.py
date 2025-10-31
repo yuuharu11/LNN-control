@@ -26,7 +26,7 @@ from train import SequenceLightningModule
 
 # --- SUCCESS CRITERION ---
 # "aで成功判定" の指定に基づき、ここでは「キューブ高さ（z） > THRESHOLD」を成功と判定します。
-SUCCESS_Z_THRESHOLD = 0.15  # 必要に応じて調整
+SUCCESS_Z_THRESHOLD = 10  # 必要に応じて調整
 
 def parse_args():
     p = argparse.ArgumentParser()
@@ -256,7 +256,8 @@ def main():
         if args.save_video and use_camera_obs and r == 0 and len(frames) > 0:
             try:
                 import imageio
-                imageio.mimsave(args.video_file, frames, fps=20)
+                frames=[np.flipud(frame) for frame in frames]  # 上下反転
+                imageio.mimsave(args.video_file, frames, fps=args.control_freq)
                 saved_video_path = args.video_file
                 print(f"✅ Video saved: {saved_video_path}")
             except Exception as e:
