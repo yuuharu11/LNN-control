@@ -25,6 +25,7 @@ import psutil
 import sys
 import socket
 import traceback
+import csv
 
 from collections import OrderedDict
 
@@ -66,7 +67,7 @@ def train(config, device, resume=False):
     print("\n============= New Training Run with Config =============")
     print(config)
     print("")
-    log_dir, ckpt_dir, video_dir, time_dir = TrainUtils.get_exp_dir(config, resume=resume)
+    log_dir, ckpt_dir, video_dir, time_dir, csv_dir = TrainUtils.get_exp_dir(config, resume=resume)
 
     # path for latest model and backup (to support @resume functionality)
     latest_model_path = os.path.join(time_dir, "last.pth")
@@ -408,6 +409,33 @@ def train(config, device, resume=False):
                 print('Env: {}'.format(env_name))
                 print(json.dumps(rollout_logs, sort_keys=True, indent=4))
 
+            # save all metrics in csv file
+            try:
+                csv_path = os.path.join(csv_dir, "rollout_stats.csv")
+                metric_keys = set()
+                for logs in all_rollout_logs.values():
+                    metric_keys.update(logs.keys())
+                metric_keys = sorted(metric_keys)
+
+                fieldnames = ["epoch", "env"] + metric_keys
+
+                file_exists = os.path.isfile(csv_path)
+                with open(csv_path, 'a') as csvfile:
+                    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                    if not file_exists:
+                        writer.writeheader()
+                    for env_name, logs in all_rollout_logs.items():
+                        row = {"epoch": epoch, "env": env_name}
+                        for k in metric_keys:
+                            row[k] = logs.get(k, "")
+                        writer.writerow(row)
+
+                print("Rollout stats saved to: {}".format(csv_path))
+                
+            except Exception as e:
+                print("Failed to write rollout CSV: {}".format(e))
+                traceback.print_exc()
+
             # checkpoint and video saving logic
             updated_stats = TrainUtils.should_save_from_rollout_logs(
                 all_rollout_logs=all_rollout_logs,
@@ -468,63 +496,6 @@ def train(config, device, resume=False):
         data_logger.record("System/RAM Usage (MB)", mem_usage, epoch)
         print("\nEpoch {} Memory Usage: {} MB\n".format(epoch, mem_usage))
 
-        # Add log GPU memory usage in MB
-        if device.type == 'cuda':
-            # PyTorch CUDA メモリ統計
-            gpu_mem_allocated = int(torch.cuda.memory_allocated(device) / (1024**2))
-            gpu_mem_reserved = int(torch.cuda.memory_reserved(device) / (1024**2))
-            gpu_mem_peak = int(torch.cuda.max_memory_allocated(device) / (1024**2))
-            
-            data_logger.record("System/GPU Memory Allocated (MB)", gpu_mem_allocated, epoch)
-            data_logger.record("System/GPU Memory Reserved (MB)", gpu_mem_reserved, epoch)
-            data_logger.record("System/GPU Memory Peak (MB)", gpu_mem_peak, epoch)
-            
-            print("GPU Memory: Allocated={} MB, Reserved={} MB, Peak={} MB".format(
-                gpu_mem_allocated, gpu_mem_reserved, gpu_mem_peak
-            ))
-
-            # detail info from nvidia-smi
-            try:
-                import nvidia_smi
-                nvidia_smi.nvmlInit()
-                
-                device_index = device.index if device.index is not None else 0
-                handle = nvidia_smi.nvmlDeviceGetHandleByIndex(device_index)
-                
-                # メモリ情報
-                info = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
-                gpu_mem_used = int(info.used / (1024**2))
-                gpu_mem_total = int(info.total / (1024**2))
-                gpu_mem_free = int(info.free / (1024**2))
-                
-                data_logger.record("System/GPU Memory Used (MB)", gpu_mem_used, epoch)
-                data_logger.record("System/GPU Memory Total (MB)", gpu_mem_total, epoch)
-                data_logger.record("System/GPU Memory Free (MB)", gpu_mem_free, epoch)
-                
-                # GPU使用率
-                utilization = nvidia_smi.nvmlDeviceGetUtilizationRates(handle)
-                gpu_util = utilization.gpu
-                gpu_mem_util = utilization.memory
-                
-                data_logger.record("System/GPU Utilization (%)", gpu_util, epoch)
-                data_logger.record("System/GPU Memory Utilization (%)", gpu_mem_util, epoch)
-                
-                # 温度
-                temp = nvidia_smi.nvmlDeviceGetTemperature(handle, nvidia_smi.NVML_TEMPERATURE_GPU)
-                data_logger.record("System/GPU Temperature (C)", temp, epoch)
-                
-                # 電力
-                power = nvidia_smi.nvmlDeviceGetPowerUsage(handle) / 1000.0  # mW to W
-                data_logger.record("System/GPU Power (W)", round(power, 2), epoch)
-                
-                print("GPU Utilization: {}%, Memory Utilization: {}%".format(gpu_util, gpu_mem_util))
-                print("GPU Temperature: {}C, Power: {:.1f}W".format(temp, power))
-                
-                nvidia_smi.nvmlShutdown()
-            except Exception as e:
-                # nvidia-smi が使えない場合はスキップ
-                pass
-            
     # terminate logging
     data_logger.close()
 

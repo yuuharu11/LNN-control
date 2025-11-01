@@ -14,6 +14,8 @@ import numpy as np
 from copy import deepcopy
 from collections import OrderedDict
 
+import psutil
+
 import torch
 
 import robomimic
@@ -75,20 +77,23 @@ def get_exp_dir(config, auto_remove_exp_dir=False, resume=False):
     # only make model directory if model saving is enabled
     output_dir = None
     if config.experiment.save.enabled:
-        output_dir = os.path.join(base_output_dir, time_str, "models")
+        output_dir = os.path.join(base_output_dir, "models")
         os.makedirs(output_dir, exist_ok=resume)
 
     # tensorboard directory
-    log_dir = os.path.join(base_output_dir, time_str, "logs")
+    log_dir = os.path.join(base_output_dir, "logs")
     os.makedirs(log_dir, exist_ok=resume)
 
     # video directory
-    video_dir = os.path.join(base_output_dir, time_str, "videos")
+    video_dir = os.path.join(base_output_dir, "videos")
     os.makedirs(video_dir, exist_ok=resume)
 
-    time_dir = os.path.join(base_output_dir, time_str)
-    
-    return log_dir, output_dir, video_dir, time_dir
+    time_dir = os.path.join(base_output_dir)
+
+    csv_dir = os.path.join(base_output_dir, "csv")
+    os.makedirs(csv_dir, exist_ok=resume)
+
+    return log_dir, output_dir, video_dir, time_dir, csv_dir
 
 
 def load_data_for_training(config, obs_keys):
@@ -327,11 +332,33 @@ def run_rollout(
 
     video_frames = []
     
+    inference_times = []
+    cpu_memory_usages = []
+    gpu_memory_usages = []
+
+    process = psutil.Process()
+
     try:
         for step_i in range(horizon):
+            torch.cuda.synchronize()
+            inference_start_time = time.time()
+
             # get action from policy
             policy_ob = ob_dict
             ac = policy(ob=policy_ob, goal=goal_dict)
+
+            torch.cuda.synchronize()
+
+            # time
+            inference_end_time = time.time() - inference_start_time
+            inference_times.append(inference_end_time)
+
+            # memory
+            cpu_mem = process.memory_info().rss / (1024 * 1024)  # in MB
+            gpu_mem = torch.cuda.memory_allocated() / (1024 * 1024)  # in MB
+
+            cpu_memory_usages.append(cpu_mem)
+            gpu_memory_usages.append(gpu_mem)
 
             # play action
             ob_dict, r, done, _ = env.step(ac)
@@ -384,6 +411,25 @@ def run_rollout(
         if k != "task":
             results["{}_Success_Rate".format(k)] = float(success[k])
 
+    # Inference times
+    if len(inference_times) > 0:
+        # in ms
+        inference_times_ms = [t * 1000 for t in inference_times]
+        results["inference_latency_avg_ms"] = np.mean(inference_times_ms)
+        results["inference_latency_std_ms"] = np.std(inference_times_ms)
+    
+    results["inference_throughput_avg_fps"] = 1000.0 / results["inference_latency_avg_ms"]
+
+    # CPU Memory
+    if len(cpu_memory_usages) > 0:
+        results["cpu_memory_avg_mb"] = np.mean(cpu_memory_usages)
+        results["cpu_memory_std_mb"] = np.std(cpu_memory_usages)
+
+    # GPU Memory
+    if len(gpu_memory_usages) > 0:
+        results["gpu_memory_avg_mb"] = np.mean(gpu_memory_usages)
+        results["gpu_memory_std_mb"] = np.std(gpu_memory_usages)
+
     return results
 
 
@@ -400,6 +446,7 @@ def rollout_with_stats(
         video_skip=5,
         terminate_on_success=False,
         verbose=False,
+        control_freq=20,
     ):
     """
     A helper function used in the train loop to conduct evaluation rollouts per environment
@@ -452,13 +499,13 @@ def rollout_with_stats(
     if video_path is not None:
         # a single video is written for all envs
         video_paths = { k : video_path for k in envs }
-        video_writer = imageio.get_writer(video_path, fps=20)
+        video_writer = imageio.get_writer(video_path, fps=control_freq)
         video_writers = { k : video_writer for k in envs }
     if video_dir is not None:
         # video is written per env
         video_str = "_epoch_{}.mp4".format(epoch) if epoch is not None else ".mp4" 
         video_paths = { k : os.path.join(video_dir, "{}{}".format(k, video_str)) for k in envs }
-        video_writers = { k : imageio.get_writer(video_paths[k], fps=20) for k in envs }
+        video_writers = { k : imageio.get_writer(video_paths[k], fps=control_freq) for k in envs }
 
     for env_key, env in envs.items():
         env_video_writer = None

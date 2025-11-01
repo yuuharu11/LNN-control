@@ -7,7 +7,7 @@
             "terminal_output_to_txt": true,
             "log_tb": false,
             "log_wandb": true,
-            "wandb_proj_name": "robomimic_baseline",
+            "wandb_proj_name": "robomimic_sweeps",
             "wandb_run_name":"bc_default",
             "wandb_tags": [                
                 "bc",
@@ -15,7 +15,8 @@
                 "low_dim",
                 "baseline",
                 "ph_dataset"
-            ]
+            ],
+            "log_wandb_every_n_steps": 100
         },
         "save": {
             "enabled": true,
@@ -31,7 +32,7 @@
         "env": null,
         "additional_envs": null,
         "render": false,
-        "render_video": true,
+        "render_video": false,
         "keep_all_videos": false,
         "video_skip": 5,
         "rollout": {
@@ -42,15 +43,19 @@
             "warmstart": 0,
             "terminate_on_success": true
         },
-        "env_meta_update_dict": {},
+        "env_meta_update_dict": {
+            "env_kwargs":{
+                "control_freq": 20
+            }
+        },
         "ckpt_path": null
     },
     "train": {
-        "data": null,
+        "data": "/work/robomimic/datasets/lift/ph/low_dim_v15.hdf5",
         "output_dir": "../bc_trained_models",
         "normalize_weights_by_ds_size": false,
         "num_data_workers": 0,
-        "hdf5_cache_mode": "all",
+        "hdf5_cache_mode": "low_dim",
         "hdf5_use_swmr": true,
         "hdf5_load_next_obs": false,
         "hdf5_normalize_obs": true,
@@ -76,7 +81,7 @@
         "goal_mode": null,
         "cuda": true,
         "batch_size": 100,
-        "num_epochs": 1000,
+        "num_epochs": 500,
         "seed": 1,
         "max_grad_norm": null
     },
@@ -94,7 +99,7 @@
                     "warmup_steps": 500
                 },
                 "regularization": {
-                    "L2": 0.0
+                    "L2": 0.0001
                 }
             }
         },

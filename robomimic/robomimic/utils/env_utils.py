@@ -313,6 +313,12 @@ def create_env_for_data_processing(
         use_depth_obs=use_depth_obs,
         **env_kwargs,
     )
+    print("=" * 60)
+    print("Environment kwargs passed to env creation:")
+    print("-" * 60)
+    import json
+    print(json.dumps(env_kwargs, indent=2, default=str))
+    print("=" * 60)
     check_env_version(env, env_meta)
     return env
 

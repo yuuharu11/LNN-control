@@ -1,0 +1,21 @@
+program: /work/robomimic/robomimic/original/sweep_train_val.py
+method: bayes
+project: robomimic_sweeps
+metric:
+  name: "Rollout/Success_Rate"
+  goal: maximize
+parameters:
+  mlp_num_layers:
+    values: [1, 2, 3]
+  mlp_width:
+    values: [128, 256, 512]
+  seq_length:
+    values: [1, 5, 10]
+  learning_rate:
+    min: 1e-5
+    max: 5e-4
+    distribution: log_uniform_values
+  l2_weight:
+    min: 1e-6
+    max: 1e-3
+    distribution: log_uniform_values

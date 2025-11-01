@@ -46,7 +46,7 @@ class DataLogger(object):
     """
     Logging class to log metrics to tensorboard and/or retrieve running statistics about logged data.
     """
-    def __init__(self, log_dir, config, log_tb=True, log_wandb=False):
+    def __init__(self, log_dir, config, log_tb=False, log_wandb=True):
         """
         Args:
             log_dir (str): base path to store logs
@@ -55,6 +55,7 @@ class DataLogger(object):
         self._tb_logger = None
         self._wandb_logger = None
         self._data = dict() # store all the scalar data logged so far
+        self._global_step = 0
 
         if log_tb:
             from tensorboardX import SummaryWriter
@@ -140,14 +141,18 @@ class DataLogger(object):
         if self._wandb_logger is not None:
             try:
                 if data_type == 'scalar':
-                    self._wandb_logger.log({k: v}, step=epoch)
+                    log_dict = {
+                        k: v,
+                        "epoch": epoch,
+                    }
+                    self._wandb_logger.log(log_dict)
                     if log_stats:
                         stats = self.get_stats(k)
                         for (stat_k, stat_v) in stats.items():
-                            self._wandb_logger.log({"{}/{}".format(k, stat_k): stat_v}, step=epoch)
+                            self._wandb_logger.log({"{}/{}".format(k, stat_k): stat_v, "epoch": epoch})
                 elif data_type == 'image':
                     import wandb
-                    self._wandb_logger.log({k: wandb.Image(v)}, step=epoch)
+                    self._wandb_logger.log({k: wandb.Image(v), "epoch": epoch})
             except Exception as e:
                 log_warning("wandb logging: {}".format(e))
 
