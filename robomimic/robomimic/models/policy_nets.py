@@ -974,6 +974,160 @@ class RNNGMMActorNetwork(RNNActorNetwork):
             self.ac_dim, self.std_activation, self.low_noise_eval, self.num_modes, self.min_std)
         return msg
 
+class LNNActorNetwork(RNN_MIMO_MLP):
+    """
+    A Liquid Neural Network (LNN) policy network that predicts actions from observations.
+    Uses Closed-form Continuous-time (CfC) neurons instead of traditional RNN cells.
+    """
+    def __init__(
+        self,
+        obs_shapes,
+        ac_dim,
+        mlp_layer_dims,
+        rnn_hidden_dim,
+        rnn_num_layers,
+        rnn_type="LSTM",  # kept for compatibility but not used for LNN
+        rnn_kwargs=None,
+        goal_shapes=None,
+        encoder_kwargs=None,
+    ):
+        """
+        Args:
+            obs_shapes (OrderedDict): a dictionary that maps modality to
+                expected shapes for observations.
+
+            ac_dim (int): dimension of action space.
+
+            mlp_layer_dims ([int]): sequence of integers for the MLP hidden layers sizes.
+
+            rnn_hidden_dim (int): LNN hidden dimension
+
+            rnn_num_layers (int): number of LNN layers (currently only 1 is supported)
+
+            rnn_type (str): kept for compatibility, not used
+
+            rnn_kwargs (dict): additional kwargs for LNN configuration
+
+            goal_shapes (OrderedDict): a dictionary that maps modality to
+                expected shapes for goal observations.
+
+            encoder_kwargs (dict or None): If None, results in default encoder_kwargs being applied. Otherwise, should
+                be nested dictionary containing relevant per-modality information for encoder networks.
+        """
+        self.ac_dim = ac_dim
+
+        assert isinstance(obs_shapes, OrderedDict)
+        self.obs_shapes = obs_shapes
+
+        # set up different observation groups for @RNN_MIMO_MLP
+        observation_group_shapes = OrderedDict()
+        observation_group_shapes["obs"] = OrderedDict(self.obs_shapes)
+
+        self._is_goal_conditioned = False
+        if goal_shapes is not None and len(goal_shapes) > 0:
+            assert isinstance(goal_shapes, OrderedDict)
+            self._is_goal_conditioned = True
+            self.goal_shapes = OrderedDict(goal_shapes)
+            observation_group_shapes["goal"] = OrderedDict(self.goal_shapes)
+        else:
+            self.goal_shapes = OrderedDict()
+
+        output_shapes = self._get_output_shapes()
+        
+        # For LNN, we use the same structure as RNN but with LNN-specific parameters
+        # Note: The actual LNN cell implementation should be in base_nets.py
+        super(LNNActorNetwork, self).__init__(
+            input_obs_group_shapes=observation_group_shapes,
+            output_shapes=output_shapes,
+            mlp_layer_dims=mlp_layer_dims,
+            mlp_activation=nn.ReLU,
+            mlp_layer_func=nn.Linear,
+            rnn_hidden_dim=rnn_hidden_dim,
+            rnn_num_layers=rnn_num_layers,
+            rnn_type="LNN",  # Custom type for LNN
+            rnn_kwargs=rnn_kwargs,
+            per_step=True,
+            encoder_kwargs=encoder_kwargs,
+        )
+
+    def _get_output_shapes(self):
+        """
+        Allow subclasses to re-define outputs from @RNN_MIMO_MLP, since we won't
+        always directly predict actions, but may instead predict the parameters
+        of a action distribution.
+        """
+        return OrderedDict(action=(self.ac_dim,))
+
+    def output_shape(self, input_shape):
+        # note: @input_shape should be dictionary (key: mod)
+        # infers temporal dimension from input shape
+        mod = list(self.obs_shapes.keys())[0]
+        T = input_shape[mod][0]
+        TensorUtils.assert_size_at_dim(input_shape, size=T, dim=0, 
+                msg="LNNActorNetwork: input_shape inconsistent in temporal dimension")
+        return [T, self.ac_dim]
+
+    def forward(self, obs_dict, goal_dict=None, rnn_init_state=None, return_state=False):
+        """
+        Forward a sequence of inputs through the LNN and the per-step network.
+
+        Args:
+            obs_dict (dict): batch of observations - each tensor in the dictionary
+                should have leading dimensions batch and time [B, T, ...]
+            goal_dict (dict): if not None, batch of goal observations
+            rnn_init_state: lnn hidden state, initialize to zero state if set to None
+            return_state (bool): whether to return hidden state
+
+        Returns:
+            actions (torch.Tensor): predicted action sequence
+            rnn_state: return lnn state at the end if return_state is set to True
+        """
+        if self._is_goal_conditioned:
+            assert goal_dict is not None
+            # repeat the goal observation in time to match dimension with obs_dict
+            mod = list(obs_dict.keys())[0]
+            goal_dict = TensorUtils.unsqueeze_expand_at(goal_dict, size=obs_dict[mod].shape[1], dim=1)
+
+        outputs = super(LNNActorNetwork, self).forward(
+            obs=obs_dict, goal=goal_dict, rnn_init_state=rnn_init_state, return_state=return_state)
+
+        if return_state:
+            actions, state = outputs
+        else:
+            actions = outputs
+            state = None
+        
+        # apply tanh squashing to ensure actions are in [-1, 1]
+        actions = torch.tanh(actions["action"])
+
+        if return_state:
+            return actions, state
+        else:
+            return actions
+
+    def forward_step(self, obs_dict, goal_dict=None, rnn_state=None):
+        """
+        Unroll LNN over single timestep to get actions.
+
+        Args:
+            obs_dict (dict): batch of observations. Should not contain
+                time dimension.
+            goal_dict (dict): if not None, batch of goal observations
+            rnn_state: lnn hidden state, initialize to zero state if set to None
+
+        Returns:
+            actions (torch.Tensor): batch of actions - does not contain time dimension
+            state: updated lnn state
+        """
+        obs_dict = TensorUtils.to_sequence(obs_dict)
+        action, state = self.forward(
+            obs_dict, goal_dict, rnn_init_state=rnn_state, return_state=True)
+        return action[:, 0], state
+
+    def _to_string(self):
+        """Info to pretty print."""
+        return "action_dim={}, type=LNN".format(self.ac_dim)
+
 
 class TransformerActorNetwork(MIMO_Transformer):
     """

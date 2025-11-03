@@ -42,6 +42,7 @@ def algo_config_to_class(algo_config):
     rnn_enabled = algo_config.rnn.enabled
     # support legacy configs that do not have "transformer" item
     transformer_enabled = ("transformer" in algo_config) and algo_config.transformer.enabled
+    lnn_enabled = ("lnn" in algo_config and algo_config.lnn.enabled)
 
     if gaussian_enabled:
         if rnn_enabled:
@@ -64,6 +65,8 @@ def algo_config_to_class(algo_config):
             raise NotImplementedError
         else:
             algo_class, algo_kwargs = BC_VAE, {}
+    elif lnn_enabled:
+        algo_class, algo_kwargs = BC_LNN, {}
     else:
         if rnn_enabled:
             algo_class, algo_kwargs = BC_RNN, {}
@@ -895,3 +898,99 @@ class BC_Transformer_GMM(BC_Transformer):
         if "policy_grad_norms" in info:
             log["Policy_Grad_Norms"] = info["policy_grad_norms"]
         return log
+
+# Add Liquid Neural Networks BC variant here 
+class BC_LNN(BC):
+    """
+    BC training with an LNN policy.
+    """
+    def _create_networks(self):
+        """
+        Creates networks and places them into @self.nets.
+        """
+        assert self.algo_config.lnn.enabled 
+        self.nets = nn.ModuleDict()
+        self.nets["policy"] = PolicyNets.LNNActorNetwork(
+            obs_shapes=self.obs_shapes,
+            goal_shapes=self.goal_shapes,
+            ac_dim=self.ac_dim,
+            mlp_layer_dims=self.algo_config.actor_layer_dims,
+            encoder_kwargs=ObsUtils.obs_encoder_kwargs_from_config(self.obs_config.encoder),
+            **BaseNets.lnn_args_from_config(self.algo_config.lnn),
+        )
+
+        self._lnn_hidden_state = None
+        self._lnn_horizon = self.algo_config.lnn.horizon
+        self._lnn_counter = 0
+        self._lnn_is_open_loop = self.algo_config.lnn.get("open_loop", False)
+
+        self.nets = self.nets.float().to(self.device)
+
+    def process_batch_for_training(self, batch):
+        """
+        Processes input batch from a data loader to filter out
+        relevant information and prepare the batch for training.
+
+        Args:
+            batch (dict): dictionary with torch.Tensors sampled
+                from a data loader
+
+        Returns:
+            input_batch (dict): processed and filtered batch that
+                will be used for training
+        """
+        input_batch = dict()
+        input_batch["obs"] = batch["obs"]
+        input_batch["goal_obs"] = batch.get("goal_obs", None) # goals may not be present
+        input_batch["actions"] = batch["actions"]
+
+        if self._lnn_is_open_loop:
+            # replace the observation sequence with one that only consists of the first observation.
+            # This way, all actions are predicted "open-loop" after the first observation, based
+            # on the lnn hidden state.
+            n_steps = batch["actions"].shape[1]
+            obs_seq_start = TensorUtils.index_at_time(batch["obs"], ind=0)
+            input_batch["obs"] = TensorUtils.unsqueeze_expand_at(obs_seq_start, size=n_steps, dim=1)
+
+        # we move to device first before float conversion because image observation modalities will be uint8 -
+        # this minimizes the amount of data transferred to GPU
+        return TensorUtils.to_float(TensorUtils.to_device(input_batch, self.device))
+
+    def get_action(self, obs_dict, goal_dict=None):
+        """
+        Get policy action outputs.
+
+        Args:
+            obs_dict (dict): current observation
+            goal_dict (dict): (optional) goal
+
+        Returns:
+            action (torch.Tensor): action tensor
+        """
+        assert not self.nets.training
+
+        if self._lnn_hidden_state is None or self._lnn_counter % self._lnn_horizon == 0:
+            batch_size = list(obs_dict.values())[0].shape[0]
+            self._lnn_hidden_state = self.nets["policy"].get_lnn_init_state(batch_size=batch_size, device=self.device)
+
+            if self._lnn_is_open_loop:
+                # remember the initial observation, and use it instead of the current observation
+                # for open-loop action sequence prediction
+                self._open_loop_obs = TensorUtils.clone(TensorUtils.detach(obs_dict))
+
+        obs_to_use = obs_dict
+        if self._lnn_is_open_loop:
+            # replace current obs with last recorded obs
+            obs_to_use = self._open_loop_obs
+
+        self._lnn_counter += 1
+        action, self._lnn_hidden_state = self.nets["policy"].forward_step(
+            obs_to_use, goal_dict=goal_dict, rnn_state=self._lnn_hidden_state)
+        return action
+
+    def reset(self):
+        """
+        Reset algo state to prepare for environment rollouts.
+        """
+        self._lnn_hidden_state = None
+        self._lnn_counter = 0

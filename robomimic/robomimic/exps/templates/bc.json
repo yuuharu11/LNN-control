@@ -187,6 +187,23 @@
             "supervise_all_steps": false,
             "nn_parameter_for_timesteps": true,
             "pred_future_acs": false
+        },
+        "lnn":{
+            "enabled": false,
+            "horizon": 10,
+            "input_size": 17,
+            "output_size": 7,
+            "units": 128,
+            "mixed_memory": false,
+            "ode_unfolds": 1,
+            "input_mapping": "affine",
+            "output_mapping": "affine",
+            "return_sequences": true,
+            "batch_first": true,
+            "epsilon": 1e-8,
+            "implicit_param_constraints": true,
+            "open_loop": false,
+            "kwargs": {}
         }
     },
     "observation": {
