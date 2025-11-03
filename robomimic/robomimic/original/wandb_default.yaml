@@ -4,6 +4,12 @@ project: robomimic_sweeps
 metric:
   name: "Rollout/Success_Rate"
   goal: maximize
+early_terminate:
+  type: hyperband
+  s: 2
+  eta: 3
+  max_iter: 20
+run_cap: 5
 parameters:
   mlp_num_layers:
     values: [1, 2, 3]
@@ -19,3 +25,5 @@ parameters:
     min: 1e-6
     max: 1e-3
     distribution: log_uniform_values
+  seq_length:
+    values: [1, 5, 10]

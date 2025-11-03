@@ -37,8 +37,8 @@
         "video_skip": 5,
         "rollout": {
             "enabled": true,
-            "n": 50,
-            "horizon": 400,
+            "n": 100,
+            "horizon": 200,
             "rate": 50,
             "warmstart": 0,
             "terminate_on_success": true
@@ -191,19 +191,17 @@
         "lnn":{
             "enabled": false,
             "horizon": 10,
-            "input_size": 17,
-            "output_size": 7,
-            "units": 128,
+            "units": [
+                {"name": "AutoNCP"},
+                {"units": 128},
+                {"output_units": 7}
+            ],
             "mixed_memory": false,
             "ode_unfolds": 1,
             "input_mapping": "affine",
             "output_mapping": "affine",
-            "return_sequences": true,
-            "batch_first": true,
             "epsilon": 1e-8,
-            "implicit_param_constraints": true,
-            "open_loop": false,
-            "kwargs": {}
+            "implicit_param_constraints": true
         }
     },
     "observation": {

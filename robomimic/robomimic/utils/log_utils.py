@@ -73,36 +73,42 @@ class DataLogger(object):
                     "\nSet this macro in {base_path}/macros_private.py" \
                     "\nIf this file does not exist, first run python {base_path}/scripts/setup_macros.py".format(base_path=robomimic.__path__[0])
             
-            # attempt to set up wandb 10 times. If unsuccessful after these trials, don't use wandb
-            num_attempts = 10
-            for attempt in range(num_attempts):
-                try:
-                    # set up wandb
-                    self._wandb_logger = wandb
+            # add additional wandb initialization attempts
+            if wandb.run is not None:
+                # already initialized
+                self._wandb_logger = wandb
+                print("wandb already initialized with run ID: {}".format(wandb.run.id))
+            else:
+                # attempt to set up wandb 10 times. If unsuccessful after these trials, don't use wandb
+                num_attempts = 10
+                for attempt in range(num_attempts):
+                    try:
+                        # set up wandb
+                        self._wandb_logger = wandb
 
-                    self._wandb_logger.init(
-                        project=config.experiment.logging.wandb_proj_name,
-                        name=config.experiment.logging.wandb_run_name,
-                        tags=config.experiment.logging.wandb_tags,
-                        dir=log_dir,
-                        mode=("offline" if attempt == num_attempts - 1 else "online"),
-                    )
+                        self._wandb_logger.init(
+                            project=config.experiment.logging.wandb_proj_name,
+                            name=config.experiment.logging.wandb_run_name,
+                            tags=config.experiment.logging.wandb_tags,
+                            dir=log_dir,
+                            mode=("offline" if attempt == num_attempts - 1 else "online"),
+                        )
 
-                    print("wandb initialized (attempt #{})".format(attempt + 1))
+                        print("wandb initialized (attempt #{})".format(attempt + 1))
 
-                    # set up info for identifying experiment
-                    wandb_config = {k: v for (k, v) in config.meta.items() if k not in ["hp_keys", "hp_values"]}
-                    for (k, v) in zip(config.meta["hp_keys"], config.meta["hp_values"]):
-                        wandb_config[k] = v
-                    if "algo" not in wandb_config:
-                        wandb_config["algo"] = config.algo_name
-                    self._wandb_logger.config.update(wandb_config)
+                        # set up info for identifying experiment
+                        wandb_config = {k: v for (k, v) in config.meta.items() if k not in ["hp_keys", "hp_values"]}
+                        for (k, v) in zip(config.meta["hp_keys"], config.meta["hp_values"]):
+                            wandb_config[k] = v
+                        if "algo" not in wandb_config:
+                            wandb_config["algo"] = config.algo_name
+                        self._wandb_logger.config.update(wandb_config)
 
-                    break
-                except Exception as e:
-                    log_warning("wandb initialization error (attempt #{}): {}".format(attempt + 1, e))
-                    self._wandb_logger = None
-                    time.sleep(30)
+                        break
+                    except Exception as e:
+                        log_warning("wandb initialization error (attempt #{}): {}".format(attempt + 1, e))
+                        self._wandb_logger = None
+                        time.sleep(30)
 
     def record(self, k, v, epoch, data_type='scalar', log_stats=False):
         """

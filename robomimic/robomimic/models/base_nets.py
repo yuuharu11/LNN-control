@@ -313,7 +313,7 @@ class RNN_Base(Module):
         input_dim,
         rnn_hidden_dim,
         rnn_num_layers,
-        rnn_type="LSTM",  # [LSTM, GRU, LNN]
+        rnn_type="LSTM",  # [LSTM, GRU]
         rnn_kwargs=None,
         per_step_net=None,
     ):
@@ -336,50 +336,24 @@ class RNN_Base(Module):
         if per_step_net is not None:
             assert isinstance(per_step_net, Module), "RNN_Base: per_step_net is not instance of Module"
 
-        assert rnn_type in ["LSTM", "GRU", "LNN"], f"invalid rnn_type {rnn_type}"
-        if rnn_type == "LNN":
-            rnn_kwargs = rnn_kwargs or {}
-            units = [
-                {"name": "AutoNCP"},
-                {"units": rnn_kwargs.get("units", rnn_hidden_dim)},
-                {"output_units": rnn_hidden_dim},
-                {"input_size": }
-            ]
-            
-            self.nets = LTC(
-                input_size=input_dim,
-                units=units,
-                return_sequences=True,
-                batch_first=True,
-                mixed_memory=rnn_kwargs.get("mixed_memory", False),
-                input_mapping=rnn_kwargs.get("input_mapping", "affine"),
-                output_mapping=rnn_kwargs.get("output_mapping", "affine"),
-                ode_unfolds=rnn_kwargs.get("ode_unfolds", 6),
-                epsilon=rnn_kwargs.get("epsilon", 1e-8),
-                implicit_param_constraints=rnn_kwargs.get("implicit_param_constraints", False),
-                dropout=0.0,
-            )
-            self._hidden_dim = rnn_hidden_dim
-            self._num_layers = 1  # LTC doesn't support multiple layers like LSTM
-            self._rnn_type = rnn_type
-            self._num_directions = 1
-        else:
-            rnn_cls = nn.LSTM if rnn_type == "LSTM" else nn.GRU
-            rnn_kwargs = rnn_kwargs if rnn_kwargs is not None else {}
-            rnn_is_bidirectional = rnn_kwargs.get("bidirectional", False)
+        assert rnn_type in ["LSTM", "GRU"], f"invalid rnn_type {rnn_type}"
 
-            self.nets = rnn_cls(
-                input_size=input_dim,
-                hidden_size=rnn_hidden_dim,
-                num_layers=rnn_num_layers,
-                batch_first=True,
-                **rnn_kwargs,
-            )
+        rnn_cls = nn.LSTM if rnn_type == "LSTM" else nn.GRU
+        rnn_kwargs = rnn_kwargs if rnn_kwargs is not None else {}
+        rnn_is_bidirectional = rnn_kwargs.get("bidirectional", False)
 
-            self._hidden_dim = rnn_hidden_dim
-            self._num_layers = rnn_num_layers
-            self._rnn_type = rnn_type
-            self._num_directions = int(rnn_is_bidirectional) + 1 # 2 if bidirectional, 1 otherwise
+        self.nets = rnn_cls(
+            input_size=input_dim,
+            hidden_size=rnn_hidden_dim,
+            num_layers=rnn_num_layers,
+            batch_first=True,
+            **rnn_kwargs,
+        )
+
+        self._hidden_dim = rnn_hidden_dim
+        self._num_layers = rnn_num_layers
+        self._rnn_type = rnn_type
+        self._num_directions = int(rnn_is_bidirectional) + 1 # 2 if bidirectional, 1 otherwise
 
     @property
     def rnn_type(self):
@@ -1347,16 +1321,20 @@ class FeatureAggregator(Module):
             return torch.sum(x * self.agg_weight, dim=1)
         raise Exception("unexpected agg type: {}".forward(self.agg_type))
 
-"""
 # Add LNN args_from_config
 def lnn_args_from_config(lnn_config):
     return dict(
-        lnn_input_size=lnn_config.input_size,
-        lnn_units=lnn_config.units,
-        lnn_output_size=lnn_config.output_size,
-        lnn_n_layers=lnn_config.n_layers,
-        lnn_mixed_memory=lnn_config.mixed_memory,
-        lnn_ode_unfolds=lnn_config.ode_unfolds,
-        lnn_kwargs=dict(lnn_config.kwargs),
+        horizon=lnn_config.horizon,
+        lnn=dict(
+            input_size=None,               
+            units=lnn_config.units,          
+            mixed_memory=lnn_config.mixed_memory,
+            ode_unfolds=lnn_config.ode_unfolds,
+            input_mapping=lnn_config.input_mapping,
+            output_mapping=lnn_config.output_mapping,
+            return_sequences=True,
+            batch_first=True,
+            epsilon=lnn_config.epsilon,
+            implicit_param_constraints=lnn_config.implicit_param_constraints,
+        )
     )
-"""

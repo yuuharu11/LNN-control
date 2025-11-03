@@ -8,7 +8,7 @@ def main():
     run = wandb.init(
         project="robomimic_sweeps",
         settings=wandb.Settings(init_timeout=120),
-        resume="allow"
+        resume="never"
         )
     cfg = run.config  # agentから受け取る設定にアクセス
 
@@ -37,6 +37,11 @@ def main():
     base_config["algo"]["optim_params"]["policy"]["regularization"]["L2"] = l2
 
     run_name = f"mlp_l{mlp_num_layers}w{mlp_width}_seq{seq_length}_lr{lr:.0e}_l2{l2:.0e}"
+
+    base_config["train"]["max_epochs"] = 100
+    base_config["experiment"]["save"]["every_n_epochs"] = 25
+    base_config["experiment"]["rollout"]["rate"] = 25
+
 
     # ✅ run IDなどは wandb から取得せず手動設定
     base_config["experiment"].setdefault("logging", {})
@@ -67,8 +72,8 @@ def main():
             "--dataset", dataset_path
         ]
         env = os.environ.copy()
-        env["WANDB_RUN_ID"] = wandb.run.id
-        env["WANDB_RESUME"] = "allow"
+        env.pop("WANDB_RUN_ID", None)
+        env.pop("WANDB_RESUME", None)
         subprocess.run(cmd, check=True, env=env)
     finally:
         os.remove(tmp_path)
