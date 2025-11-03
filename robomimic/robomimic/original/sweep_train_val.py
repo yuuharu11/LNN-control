@@ -38,7 +38,7 @@ def main():
 
     run_name = f"mlp_l{mlp_num_layers}w{mlp_width}_seq{seq_length}_lr{lr:.0e}_l2{l2:.0e}"
 
-    base_config["train"]["max_epochs"] = 100
+    base_config["train"]["max_epochs"] = 50
     base_config["experiment"]["save"]["every_n_epochs"] = 25
     base_config["experiment"]["rollout"]["rate"] = 25
 
