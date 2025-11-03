@@ -38,7 +38,7 @@ def main():
 
     run_name = f"mlp_l{mlp_num_layers}w{mlp_width}_seq{seq_length}_lr{lr:.0e}_l2{l2:.0e}"
 
-    base_config["train"]["max_epochs"] = 50
+    base_config["train"]["num_epochs"] = 50
     base_config["experiment"]["save"]["every_n_epochs"] = 25
     base_config["experiment"]["rollout"]["rate"] = 25
 
@@ -46,10 +46,7 @@ def main():
     # ✅ run IDなどは wandb から取得せず手動設定
     base_config["experiment"].setdefault("logging", {})
     base_config["experiment"]["logging"]["log_wandb"] = True
-    if "wandb_proj_name" in base_config["experiment"]["logging"]:
-        del base_config["experiment"]["logging"]["wandb_proj_name"]
-    base_config["experiment"]["logging"]["wandb_run_name"] = run_name
-    base_config["experiment"]["name"] = f"bc_sweep_{run_name}"
+    base_config["experiment"]["name"] = f"bc_sweep/{run_name}"
 
     # ✅ dataset の決定
     dataset_path = os.environ.get("SWEEP_DATASET", None)

@@ -2,7 +2,7 @@ program: /work/robomimic/robomimic/original/sweep_train_val.py
 method: bayes
 project: robomimic_sweeps
 metric:
-  name: "Rollout/Success_Rate"
+  name: "Rollout/Success_Rate/low_dim_v15"
   goal: maximize
 run_cap: 5
 parameters:
