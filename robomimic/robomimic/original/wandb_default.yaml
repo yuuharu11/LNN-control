@@ -4,7 +4,7 @@ project: robomimic_sweeps
 metric:
   name: "Rollout/Success_Rate/low_dim_v15"
   goal: maximize
-run_cap: 5
+run_cap: 300
 parameters:
   mlp_num_layers:
     values: [1, 2, 3]

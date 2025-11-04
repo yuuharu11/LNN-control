@@ -61,7 +61,7 @@
         "hdf5_normalize_obs": true,
         "hdf5_filter_key": "train",
         "hdf5_validation_filter_key": "valid",
-        "seq_length": 1,
+        "seq_length": 10,
         "pad_seq_length": true,
         "frame_stack": 1,
         "pad_frame_stack": true,
@@ -90,7 +90,7 @@
             "policy": {
                 "optimizer_type": "adamw",
                 "learning_rate": {
-                    "initial": 0.0001,
+                    "initial": 5e-4,
                     "decay_factor": 0.1,
                     "epoch_schedule": [],
                     "scheduler_type": "cosine",
@@ -99,7 +99,7 @@
                     "warmup_steps": 500
                 },
                 "regularization": {
-                    "L2": 0.0001
+                    "L2": 1e-3
                 }
             }
         },
@@ -109,6 +109,7 @@
             "cos_weight": 0.0
         },
         "actor_layer_dims": [
+            1024,
             1024,
             1024
         ],

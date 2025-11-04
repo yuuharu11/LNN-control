@@ -1,0 +1,37 @@
+program: /work/robomimic/robomimic/original/sweep_lnn.py
+method: bayes
+project: robomimic_lnn_sweeps
+metric:
+  name: "Rollout/Success_Rate/low_dim_v15"
+  goal: maximize
+run_cap: 500
+parameters:
+  units:
+    values: [64, 128, 256, 512]
+  seq_length:
+    max: 50
+    min: 1
+    distribution: q_uniform
+    q: 1
+  horizon:
+    max: 50
+    min: 1
+    distribution: q_uniform
+    q: 1
+  ode_unfolds:
+    max: 10
+    min: 1
+    distribution: q_uniform
+    q: 1
+  epsilon:
+    min: 0.01
+    max: 0.5
+    distribution: uniform
+  learning_rate:
+    min: 1e-5
+    max: 5e-4
+    distribution: log_uniform_values
+  l2_weight:
+    min: 1e-6
+    max: 1e-3
+    distribution: log_uniform_values
