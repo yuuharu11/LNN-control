@@ -518,6 +518,15 @@ def main(args):
     if args.name is not None:
         config.experiment.name = args.name
 
+    if args.seed is not None:
+        config.train.seed = args.seed
+
+    if args.wandb_project is not None:
+        config.experiment.logging.wandb_proj_name = args.wandb_project
+
+    if args.wandb_name is not None:
+        config.experiment.logging.wandb_run_name = args.wandb_name
+
     # get torch device
     device = TorchUtils.get_torch_device(try_to_use_cuda=config.train.cuda)
 
@@ -599,6 +608,28 @@ if __name__ == "__main__":
         "--resume",
         action='store_true',
         help="set this flag to resume training from latest checkpoint",
+    )
+
+    # Add args seed
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="(optional) random seed for training"
+    )
+
+    parser.add_argument(
+        "--wandb_project",
+        type=str,
+        default=None,
+        help="(optional) wandb project name"
+    )
+
+    parser.add_argument(
+        "--wandb_name",
+        type=str,
+        default=None,
+        help="(optional) wandb name"
     )
 
     args = parser.parse_args()
