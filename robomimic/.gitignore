@@ -119,5 +119,3 @@ venv.bak/
 *.mp4
 *.pth
 
-# private macros
-macros_private.py
