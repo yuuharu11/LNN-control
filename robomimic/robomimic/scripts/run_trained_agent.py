@@ -57,6 +57,10 @@ import h5py
 import imageio
 import numpy as np
 from copy import deepcopy
+import psutil
+import time
+import csv
+import os
 
 import torch
 
@@ -69,8 +73,26 @@ from robomimic.envs.env_base import EnvBase
 from robomimic.envs.wrappers import EnvWrapper
 from robomimic.algo import RolloutPolicy
 
+class PerformanceMonitor:
+    """ monitor gpu/CPU memory usage and time taken for rollouts """
+    def __init__(self, device):
+        self.device = device
+        self.use_gpu = torch.cuda.is_available() and ("cuda" in str(device))
+    
+    def gpu_memory_mb(self):
+        """ gpu memory usage in MB """
+        if self.use_gpu:
+            return torch.cuda.memory_allocated(self.device) / 1024.0 / 1024.0
+        else:
+            return 0.0
 
-def rollout(policy, env, horizon, render=False, video_writer=None, video_skip=5, return_obs=False, camera_names=None):
+    def cpu_memory_mb(self):
+        """ cpu memory usage in MB """
+        process=psutil.Process()
+        return process.memory_info().rss / 1024.0 / 1024.0
+    
+
+def rollout(policy, env, horizon, render=False, video_writer=None, video_skip=5, return_obs=False, camera_names=None, performance_monitor=None):
     """
     Helper function to carry out rollouts. Supports on-screen rendering, off-screen rendering to a video, 
     and returns the rollout trajectory.
@@ -110,18 +132,35 @@ def rollout(policy, env, horizon, render=False, video_writer=None, video_skip=5,
     if return_obs:
         # store observations too
         traj.update(dict(obs=[], next_obs=[]))
+
+    # for monitoring performance
+    step_latencies, policy_latencies, env_step_times = [], [], []
+    gpu_memories, cpu_memories = [], []
+
     try:
         for step_i in range(horizon):
+            gpu_memory=0.0
+            cpu_memory=0.0
 
+            t1 = time.time()
             # get action from policy
             act = policy(ob=obs)
 
+            t2 = time.time()
+            policy_latencies.append(t2 - t1)
+
             # play action
             next_obs, r, done, _ = env.step(act)
+            t3 = time.time()
+            env_step_times.append(t3 - t2)
 
             # compute reward
             total_reward += r
             success = env.is_success()["task"]
+
+            if performance_monitor is not None:
+                gpu_memories.append(performance_monitor.gpu_memory_mb()-gpu_memory)
+                cpu_memories.append(performance_monitor.cpu_memory_mb()-cpu_memory)
 
             # visualization
             if render:
@@ -152,10 +191,25 @@ def rollout(policy, env, horizon, render=False, video_writer=None, video_skip=5,
             obs = deepcopy(next_obs)
             state_dict = env.get_state()
 
+            step_latencies.append(time.time() - t1)
+
     except env.rollout_exceptions as e:
         print("WARNING: got rollout exception {}".format(e))
 
-    stats = dict(Return=total_reward, Horizon=(step_i + 1), Success_Rate=float(success))
+    stats = dict(Return=total_reward, 
+                Horizon=(step_i + 1), 
+                Success_Rate=float(success),
+                Avg_Policy_Latency=np.mean(policy_latencies),
+                Std_Policy_Latency=np.std(policy_latencies),
+                Avg_Env_Step_Time=np.mean(env_step_times),
+                Std_Env_Step_Time=np.std(env_step_times),
+                Avg_Step_Latency=np.mean(step_latencies),
+                Std_Step_Latency=np.std(step_latencies),
+                Avg_GPU_Memory_MB=np.mean(gpu_memories),
+                Std_GPU_Memory_MB=np.std(gpu_memories),
+                Avg_CPU_Memory_MB=np.mean(cpu_memories),
+                Std_CPU_Memory_MB=np.std(cpu_memories),
+                )
 
     if return_obs:
         # convert list of dict to dict of list for obs dictionaries (for convenient writes to hdf5 dataset)
@@ -178,6 +232,7 @@ def rollout(policy, env, horizon, render=False, video_writer=None, video_skip=5,
 def run_trained_agent(args):
     # some arg checking
     write_video = (args.video_path is not None)
+    write_csv = (args.csv_path is not None)
     assert not (args.render and write_video) # either on-screen or video but not both
     if args.render:
         # on-screen rendering can only support one camera
@@ -219,6 +274,36 @@ def run_trained_agent(args):
     if write_video:
         video_writer = imageio.get_writer(args.video_path, fps=20)
 
+    csv_file = None
+    if write_csv:
+
+        fieldnames = [
+            'name',
+            'return',
+            'horizon',
+            'success_rate',
+            'avg_policy_latency_ms',
+            'std_policy_latency_ms',
+            'avg_env_step_time_ms',
+            'std_env_step_time_ms',
+            'avg_step_latency_ms',
+            'std_step_latency_ms',
+            'avg_gpu_memory_increase_mb',
+            'std_gpu_memory_increase_mb',
+            'avg_cpu_memory_increase_mb',
+            'std_cpu_memory_increase_mb'
+        ]
+        if os.path.exists(args.csv_path):
+            print("CSV file {} already exists and will be appended.".format(args.csv_path))
+            csv_file = open(args.csv_path, mode='a', newline='')
+            csv_writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        else:
+            print("Creating new CSV file at {}".format(args.csv_path))
+            csv_file = open(args.csv_path, mode='w', newline='')
+            # write csv header
+            csv_writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+            csv_writer.writeheader()
+
     # maybe open hdf5 to write rollouts
     write_dataset = (args.dataset_path is not None)
     if write_dataset:
@@ -237,6 +322,7 @@ def run_trained_agent(args):
             video_skip=args.video_skip, 
             return_obs=(write_dataset and args.dataset_obs),
             camera_names=args.camera_names,
+            performance_monitor=PerformanceMonitor(device=device),
         )
         rollout_stats.append(stats)
 
@@ -274,9 +360,44 @@ def run_trained_agent(args):
         data_writer.close()
         print("Wrote dataset trajectories to {}".format(args.dataset_path))
 
+    if write_csv:
+        # write average stats to csv
+        csv_writer.writerow({
+            'name': args.name,
+            'return': avg_rollout_stats["Return"],
+            'horizon': avg_rollout_stats["Horizon"],
+            'success_rate': avg_rollout_stats["Num_Success"] / rollout_num_episodes,
+            'avg_policy_latency_ms': avg_rollout_stats["Avg_Policy_Latency"] * 1000.0,
+            'std_policy_latency_ms': avg_rollout_stats["Std_Policy_Latency"] * 1000.0,
+            'avg_env_step_time_ms': avg_rollout_stats["Avg_Env_Step_Time"] * 1000.0,
+            'std_env_step_time_ms': avg_rollout_stats["Std_Env_Step_Time"] * 1000.0,
+            'avg_step_latency_ms': avg_rollout_stats["Avg_Step_Latency"] * 1000.0,
+            'std_step_latency_ms': avg_rollout_stats["Std_Step_Latency"] * 1000.0,
+            'avg_gpu_memory_increase_mb': avg_rollout_stats["Avg_GPU_Memory_MB"],
+            'std_gpu_memory_increase_mb': avg_rollout_stats["Std_GPU_Memory_MB"],
+            'avg_cpu_memory_increase_mb': avg_rollout_stats["Avg_CPU_Memory_MB"],
+            'std_cpu_memory_increase_mb': avg_rollout_stats["Std_CPU_Memory_MB"],
+        })
+        csv_file.close()
+        print("Wrote rollout stats to {}".format(args.csv_path))
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+
+    # register name
+    parser.add_argument(
+        "--name",
+        type=str,
+        default="default",
+    )
+
+    # csv path to write rollout stats
+    parser.add_argument(
+        "--csv_path",
+        type=str,
+        default=None,
+    )
 
     # Path to trained model
     parser.add_argument(
