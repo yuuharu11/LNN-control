@@ -22,6 +22,7 @@ from robomimic.models.obs_nets import MIMO_MLP, RNN_MIMO_MLP, MIMO_Transformer, 
 from robomimic.models.vae_nets import VAE
 from robomimic.models.distributions import TanhWrappedDistribution
 from robomimic.models.lnn.ltc import LTC
+from robomimic.models.lnn.cfc import CfC
 
 
 class ActorNetwork(MIMO_MLP):
@@ -1582,26 +1583,48 @@ class LNNActorNetwork(nn.Module):
         self.horizon = lnn_args["horizon"]
         self.obs_keys = list(obs_shapes.keys())
 
+        print(lnn_args)
+        self.mixed_memory = lnn_args["lnn"]["mixed_memory"]
+        self.core_type = lnn_args["lnn"]["core_type"]
+        control_freq = 20  # Hz
+        self.timespans = 1.0 / control_freq
+
         # 入力次元（低次元のみ想定）
         in_dim = sum(int(torch.tensor(obs_shapes[k]).prod().item()) for k in self.obs_keys)
 
         # LTC コア
         ltc_kwargs = dict(lnn_args["lnn"])
         ltc_kwargs["input_size"] = in_dim
-        self.core = LTC(
-            input_size=ltc_kwargs["input_size"],
-            units=ltc_kwargs["units"],
-            return_sequences=True,
-            batch_first=True,
-            mixed_memory=ltc_kwargs["mixed_memory"],
-            input_mapping=ltc_kwargs["input_mapping"],
-            output_mapping=ltc_kwargs["output_mapping"],
-            ode_unfolds=ltc_kwargs["ode_unfolds"],
-            epsilon=ltc_kwargs["epsilon"],
-            implicit_param_constraints=ltc_kwargs["implicit_param_constraints"],
-            dropout=0.0,
-            transposed=False,
-        )
+        if self.core_type == "LTC":
+            self.core = LTC(
+                input_size=ltc_kwargs["input_size"],
+                units=ltc_kwargs["units"],
+                return_sequences=True,
+                batch_first=True,
+                mixed_memory=ltc_kwargs["mixed_memory"],
+                input_mapping=ltc_kwargs["input_mapping"],
+                output_mapping=ltc_kwargs["output_mapping"],
+                ode_unfolds=ltc_kwargs["ode_unfolds"],
+                epsilon=ltc_kwargs["epsilon"],
+                implicit_param_constraints=ltc_kwargs["implicit_param_constraints"],
+                dropout=0.0,
+                transposed=False,
+            )
+        elif self.core_type == "CfC":
+            self.core = CfC(
+                input_size=ltc_kwargs["input_size"],
+                units=ltc_kwargs["units"],
+                return_sequences=True,
+                batch_first=True,
+                mixed_memory=ltc_kwargs["mixed_memory"],
+                mode=ltc_kwargs.get("mode", "default"),
+                activation=ltc_kwargs.get("activation", "lecun_tanh"),
+                backbone_units=ltc_kwargs.get("backbone_units", None),
+                backbone_layers=ltc_kwargs.get("backbone_layers", None),
+                backbone_dropout=ltc_kwargs.get("backbone_dropout", None),
+                dropout=0.0,
+                transposed=False,
+            )
 
         # 出力ヘッド(decoderの役割)
         layers = []
@@ -1612,28 +1635,65 @@ class LNNActorNetwork(nn.Module):
         layers += [nn.Linear(last, ac_dim)]
         self.head = nn.Sequential(*layers)
 
-    def _flatten(self, obs_dict):
-        # {k: [B, T, Dk]} → [B, T, Din]
+    def _process_obs_and_times(self, obs_dict):
+        """obs_dict {k: [B, T, Dk]} → inputs [B, T, Din], timespans [B, T]"""
         xs = [obs_dict[k] for k in self.obs_keys]
-        return torch.cat(xs, dim=-1)
-
+        inputs = torch.cat(xs, dim=-1) # [B, T, Din]
+        return inputs
+    
+    def _call_core(self, x, timespans, rnn_state=None):
+        """LTC コア呼び出しラッパー"""
+        if self.core_type == "LTC" and self.mixed_memory:
+            return self.core(x, timespans=timespans, state=rnn_state)
+        elif self.core_type == "CfC" and self.mixed_memory:
+            return self.core(x, timespans=timespans, hx=rnn_state)
+        elif self.core_type == "LTC":
+            return self.core(x, state=rnn_state)
+        else:
+            return self.core(x, hx=rnn_state)
+        
     def forward(self, obs_dict, goal_dict=None):
-        x = self._flatten(obs_dict)          # [B, T, Din], 次元拡張や特徴量抽出は行わない
-        y, _ = self.core(x)                  # [B, T, H]
-        a = self.head(y)                     # [B, T, A]
-        return torch.tanh(a)          # squash to [-1, 1]
+        x = self._process_obs_and_times(obs_dict)  # [B, T, Din], [B, T] or None
+        B, T, _ = x.shape
+        timespans = torch.ones((B, T), device=x.device) * self.timespans
+        if self.mixed_memory and self.core_type == "LTC":
+            y, _ = self.core(x, timespans=timespans)          # [B, T, H]
+        else:
+            y, _ = self.core(x)                               # [B, T, H]
+        a = self.head(y)                                      # [B, T, A]
+        return torch.tanh(a)                                  # squash to [-1, 1]
 
     def forward_train(self, obs_dict, goal_dict=None):
-        return self.forward(obs_dict, goal_dict)
+        """学習用: 逐次推論せず一括処理"""
+        actions, _ = self.forward(obs_dict, goal_dict)
+        return actions
 
     def get_lnn_init_state(self, batch_size, device):
-        return torch.zeros((batch_size, self.core.state_size), device=device)
-
+        """初期隠れ状態を生成"""
+        h0 = torch.zeros((batch_size, self.core.state_size), device=device)
+        if self.mixed_memory:
+            c0 = torch.zeros((batch_size, self.core.state_size), device=device)
+            return (h0, c0)
+        return h0
+    
     @torch.no_grad()
     def forward_step(self, obs_dict, goal_dict=None, rnn_state=None):
-        # obs_dict: {k: [B, Dk]} を 1 ステップとして処理
-        x = {k: v.unsqueeze(1) for k, v in obs_dict.items()}  # [B, 1, Dk]
-        x = self._flatten(x)                                  # [B, 1, Din]
-        y, new_state = self.core(x, state=rnn_state)          # y: [B, 1, H]
-        a = self.head(y)[:, 0, :]                             # [B, A]
+        """1ステップ推論API"""
+        # obs_dict: {k: [B, Dk]} → [B, 1, Din]
+        xs = [obs_dict[k].unsqueeze(1) for k in self.obs_keys]
+        x = torch.cat(xs, dim=-1)  # [B, 1, Din]
+
+        if self.mixed_memory:
+            B = x.size(0)
+            # LTC.forward では timespans[:, t] として取り出すので (B, 1) の形にする
+            timespans = torch.full(
+                (B, 1),
+                fill_value=self.timespans,
+                device=x.device,
+                dtype=x.dtype,
+            )
+        
+        y, new_state = self._call_core(x, timespans=timespans, rnn_state=rnn_state)
+
+        a = self.head(y)[:, 0, :]  # [B, A]
         return torch.tanh(a), new_state

@@ -525,7 +525,15 @@ def main(args):
         config.experiment.logging.wandb_proj_name = args.wandb_project
 
     if args.wandb_name is not None:
-        config.experiment.logging.wandb_run_name = args.wandb_name
+        with config.unlocked():
+            config.experiment.logging.wandb_run_name = args.wandb_name
+
+    if args.wandb:
+        with config.unlocked():
+            config.experiment.logging.log_wandb = True
+            config.experiment.logging.log_tb = False  # disable tensorboard if wandb is enabled
+            config.experiment.logging.log_wandb_every_n_steps = 100
+            config.experiment.logging.wandb_tags = [] 
 
     # get torch device
     device = TorchUtils.get_torch_device(try_to_use_cuda=config.train.cuda)
@@ -630,6 +638,12 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help="(optional) wandb name"
+    )
+
+    parser.add_argument(
+        "--wandb",
+        action='store_true',
+        help="set this flag to enable wandb logging"
     )
 
     args = parser.parse_args()

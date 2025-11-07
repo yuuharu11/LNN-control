@@ -1336,5 +1336,6 @@ def lnn_args_from_config(lnn_config):
             batch_first=True,
             epsilon=lnn_config.epsilon,
             implicit_param_constraints=lnn_config.implicit_param_constraints,
+            core_type=lnn_config.core_type,
         )
     )

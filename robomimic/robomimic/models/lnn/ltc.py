@@ -198,10 +198,17 @@ class LTC(SequenceModule):
                 c_state = c_state.unsqueeze(0) if c_state is not None else None
 
         output_sequence = []
+    
         for t in range(seq_len):
             if self.batch_first:
                 inputs = input[:, t]
-                ts = 1.0 if timespans is None else timespans[:, t].squeeze()
+                if timespans is None:
+                    ts = 1.0
+                else:
+                    ts = timespans[:, t].squeeze()
+                    if ts.dim() == 1:
+                        ts = ts.unsqueeze(-1)
+
             else:
                 inputs = input[t]
                 ts = 1.0 if timespans is None else timespans[t].squeeze()
