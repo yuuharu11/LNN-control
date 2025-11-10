@@ -1629,11 +1629,14 @@ class LNNActorNetwork(nn.Module):
         # 出力ヘッド(decoderの役割)
         layers = []
         last = self.core.d_output
-        for h in mlp_layer_dims:
-            layers += [nn.Linear(last, h), nn.ReLU()]
-            last = h
-        layers += [nn.Linear(last, ac_dim)]
-        self.head = nn.Sequential(*layers)
+        if len(mlp_layer_dims) == 0:
+            self.head = nn.Identity()
+        else:
+            for h in mlp_layer_dims:
+                layers += [nn.Linear(last, h), nn.ReLU()]
+                last = h
+            layers += [nn.Linear(last, ac_dim)]
+            self.head = nn.Sequential(*layers)
 
     def _process_obs_and_times(self, obs_dict):
         """obs_dict {k: [B, T, Dk]} → inputs [B, T, Din], timespans [B, T]"""
