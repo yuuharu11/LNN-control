@@ -4,11 +4,10 @@
 # ===== Multiple Seeds & Datasets Training Script =====
 # LNN モデルを複数の seed と dataset で学習します
 
-SEEDS=(1 2 3 4 5)
+SEEDS=(1)
 WANDB_PROJECT="robomimic_lift"
 DATASETS=(
     "/work/robomimic/datasets/lift/ph/low_dim_v15.hdf5"
-    "/work/robomimic/datasets/lift/mg/low_dim_sparse_v15.hdf5"
     "/work/robomimic/datasets/lift/mh/low_dim_v15.hdf5"
 )
 
@@ -32,8 +31,8 @@ for SEED in "${SEEDS[@]}"; do
     DATASET_NAME=$(basename "$DATA_TYPE_DIR")
     
     # wandb_name と exp_name を設定
-    WANDB_NAME="lnn_lstm_seed${SEED}_${DATASET_NAME}"
-    EXP_NAME="lift/lnn_lstm/seed${SEED}_${DATASET_NAME}"
+    WANDB_NAME="lnn_lstm_${DATASET_NAME}"
+    EXP_NAME="lift/lnn_lstm/${DATASET_NAME}"
     
     echo "[$COUNT/$TOTAL] 🌱 Starting: seed=$SEED, dataset=$DATASET_NAME"
     echo "   wandb_name: $WANDB_NAME"

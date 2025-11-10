@@ -92,7 +92,7 @@ class PerformanceMonitor:
         return process.memory_info().rss / 1024.0 / 1024.0
     
 
-def rollout(policy, env, horizon, render=False, video_writer=None, video_skip=5, return_obs=False, camera_names=None, performance_monitor=None):
+def rollout(policy, env, horizon, render=False, video_writer=None, video_skip=5, return_obs=False, camera_names=None, performance_monitor=None, obs_keys=None):
     """
     Helper function to carry out rollouts. Supports on-screen rendering, off-screen rendering to a video, 
     and returns the rollout trajectory.
@@ -124,6 +124,9 @@ def rollout(policy, env, horizon, render=False, video_writer=None, video_skip=5,
 
     # hack that is necessary for robosuite tasks for deterministic action playback
     obs = env.reset_to(state_dict)
+
+    # filter observation(for low dim policy)
+    obs = ObsUtils.filter_obs(obs, obs_keys)
 
     results = {}
     video_count = 0  # video frame counter
@@ -250,10 +253,12 @@ def run_trained_agent(args):
     # read rollout settings
     rollout_num_episodes = args.n_rollouts
     rollout_horizon = args.horizon
+    config, _ = FileUtils.config_from_checkpoint(ckpt_dict=ckpt_dict)
     if rollout_horizon is None:
         # read horizon from config
-        config, _ = FileUtils.config_from_checkpoint(ckpt_dict=ckpt_dict)
         rollout_horizon = config.experiment.rollout.horizon
+    # read obs_keys from config
+    obs_keys = list(config.observation.modalities.obs.low_dim)
 
     # create environment from saved checkpoint
     env, _ = FileUtils.env_from_checkpoint(
@@ -323,8 +328,10 @@ def run_trained_agent(args):
             return_obs=(write_dataset and args.dataset_obs),
             camera_names=args.camera_names,
             performance_monitor=PerformanceMonitor(device=device),
+            obs_keys=obs_keys
         )
         rollout_stats.append(stats)
+        print(f"Rollout {i+1}/{rollout_num_episodes}", end='\r', flush=True)
 
         if write_dataset:
             # store transitions

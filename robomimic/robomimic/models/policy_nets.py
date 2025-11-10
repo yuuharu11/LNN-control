@@ -1683,15 +1683,14 @@ class LNNActorNetwork(nn.Module):
         xs = [obs_dict[k].unsqueeze(1) for k in self.obs_keys]
         x = torch.cat(xs, dim=-1)  # [B, 1, Din]
 
-        if self.mixed_memory:
-            B = x.size(0)
-            # LTC.forward では timespans[:, t] として取り出すので (B, 1) の形にする
-            timespans = torch.full(
-                (B, 1),
-                fill_value=self.timespans,
-                device=x.device,
-                dtype=x.dtype,
-            )
+        B = x.size(0)
+        # LTC.forward では timespans[:, t] として取り出すので (B, 1) の形にする
+        timespans = torch.full(
+            (B, 1),
+            fill_value=self.timespans,
+            device=x.device,
+            dtype=x.dtype,
+        )
         
         y, new_state = self._call_core(x, timespans=timespans, rnn_state=rnn_state)
 

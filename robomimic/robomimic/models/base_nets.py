@@ -1323,6 +1323,19 @@ class FeatureAggregator(Module):
 
 # Add LNN args_from_config
 def lnn_args_from_config(lnn_config):
+    """
+    Creates LNN arguments from the LNN config.
+    
+    Args:
+        lnn_config (Config): Config object for LNN
+        
+    Returns:
+        dict: arguments to pass to LNN constructor
+    """
+    if 'core_type' in lnn_config:
+        core_type = lnn_config['core_type']
+    else:
+        core_type = 'LTC' 
     return dict(
         horizon=lnn_config.horizon,
         lnn=dict(
@@ -1336,6 +1349,6 @@ def lnn_args_from_config(lnn_config):
             batch_first=True,
             epsilon=lnn_config.epsilon,
             implicit_param_constraints=lnn_config.implicit_param_constraints,
-            core_type=lnn_config.core_type,
+            core_type=core_type,
         )
     )

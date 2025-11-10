@@ -521,6 +521,9 @@ def main(args):
     if args.seed is not None:
         config.train.seed = args.seed
 
+    if args.num_epochs is not None:
+        config.train.num_epochs = args.num_epochs
+
     if args.wandb_project is not None:
         config.experiment.logging.wandb_proj_name = args.wandb_project
 
@@ -624,6 +627,12 @@ if __name__ == "__main__":
         type=int,
         default=None,
         help="(optional) random seed for training"
+    )
+
+    parser.add_argument(
+        "--num_epochs",
+        type=int,
+        help="(optional) number of training epochs"
     )
 
     parser.add_argument(
