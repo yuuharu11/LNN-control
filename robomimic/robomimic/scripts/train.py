@@ -524,6 +524,9 @@ def main(args):
     if args.num_epochs is not None:
         config.train.num_epochs = args.num_epochs
 
+    if args.units is not None:
+        config.algo.lnn.units[1]["units"] = args.units
+
     if args.wandb_project is not None:
         config.experiment.logging.wandb_proj_name = args.wandb_project
 
@@ -633,6 +636,13 @@ if __name__ == "__main__":
         "--num_epochs",
         type=int,
         help="(optional) number of training epochs"
+    )
+
+    parser.add_argument(
+        "--units",
+        type=int,
+        default=None,
+        help="(optional) number of units in the model"
     )
 
     parser.add_argument(

@@ -1591,6 +1591,7 @@ class LNNActorNetwork(nn.Module):
 
         # 入力次元（低次元のみ想定）
         in_dim = sum(int(torch.tensor(obs_shapes[k]).prod().item()) for k in self.obs_keys)
+        print(f"LNNActorNetwork: in_dim={in_dim}, ac_dim={ac_dim}")
 
         # LTC コア
         ltc_kwargs = dict(lnn_args["lnn"])

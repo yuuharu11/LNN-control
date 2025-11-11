@@ -10,12 +10,12 @@ echo ""
 
 # ===== Lift 設定リスト =====
 declare -a CAN_CONFIGS=(
-    "bc:can/ph/low_dim"
-    "bc_rnn:can/ph/low_dim"
-    "bcq:can/ph/low_dim"
-    "cql:can/ph/low_dim"
-    "hbc:can/ph/low_dim"
-    "iris:can/ph/low_dim"
+    "bc:can/mh/low_dim"
+    "bc_rnn:can/mh/low_dim"
+    "bcq:can/mh/low_dim"
+    "cql:can/mh/low_dim"
+    "hbc:can/mh/low_dim"
+    "iris:can/mh/low_dim"
 )
 
 TOTAL=${#CAN_CONFIGS[@]}
