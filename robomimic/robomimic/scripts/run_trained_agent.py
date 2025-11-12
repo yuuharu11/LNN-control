@@ -258,8 +258,12 @@ def run_trained_agent(args):
         # read horizon from config
         rollout_horizon = config.experiment.rollout.horizon
     # read obs_keys from config
-    obs_keys = list(config.observation.modalities.obs.low_dim)
-
+    with config.unlocked():
+        obs_keys = list(config.observation.modalities.obs.low_dim)
+        if obs_keys is None or len(obs_keys) == 0:
+            obs_keys = list(config.observation.planner.modalities.obs.low_dim)
+            if obs_keys is None or len(obs_keys) == 0:
+                obs_keys = list(config.observation.value_planner.planner.modalities.obs.low_dim)
     # create environment from saved checkpoint
     env, _ = FileUtils.env_from_checkpoint(
         ckpt_dict=ckpt_dict, 
