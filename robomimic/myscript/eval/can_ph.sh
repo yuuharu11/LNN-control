@@ -39,8 +39,7 @@ for name in "${!models[@]}"; do
         --seed "${SEED}" \
         --dataset_path "${DATASET_PATH}" \
         --name "${name}" \
-        --csv_path "${CSV_PATH}" \
-        --record_lnn_states False
+        --csv_path "${CSV_PATH}"
 
     echo "Completed: ${name}"
     echo "----------------------------------------"
