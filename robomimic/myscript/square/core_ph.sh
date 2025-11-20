@@ -12,10 +12,10 @@ echo ""
 declare -a SQUARE_CONFIGS=(
     "bc:square/ph/low_dim"
     "bc_rnn:square/ph/low_dim"
-    "bcq:square/ph/low_dim"
-    "cql:square/ph/low_dim"
-    "hbc:square/ph/low_dim"
-    "iris:square/ph/low_dim"
+    #"bcq:square/ph/low_dim"
+    #"cql:square/ph/low_dim"
+    #"hbc:square/ph/low_dim"
+    #"iris:square/ph/low_dim"
 )
 
 TOTAL=${#SQUARE_CONFIGS[@]}

@@ -89,10 +89,177 @@ class PerformanceMonitor:
     def cpu_memory_mb(self):
         """ cpu memory usage in MB """
         process=psutil.Process()
+
         return process.memory_info().rss / 1024.0 / 1024.0
     
+class LNNStateRecorder:
+    """Recorder for LNN states during rollout, with optional hook-based recording."""
+    def __init__(self, enable=False, device='cuda'):
+        self.enable = enable
+        self.device = device
+        self.states = []
+        self.hparams = None
+        self.initialized = False
+        self.hooks = []
 
-def rollout(policy, env, horizon, render=False, video_writer=None, video_skip=5, return_obs=False, camera_names=None, performance_monitor=None, obs_keys=None):
+    def _hook_fn(self, module, input, output):
+        if not self.enable:
+            return
+
+        # forward returns: (readout, new_state)
+        if not isinstance(output, tuple) or len(output) < 2:
+            print("❌ Output is not a valid (readout, state) tuple.")
+            return
+
+        hidden = output[1]
+
+        # Case A: normal (tensor)
+        if isinstance(hidden, torch.Tensor):
+            hs = hidden.detach().cpu().numpy()
+            self.states.append(hs)
+            print(f"✅ Saved hidden state tensor, shape={hs.shape}, total={len(self.states)}")
+            return
+
+        # Case B: mixed memory (tuple of tensors)
+        if isinstance(hidden, tuple):
+            # Expecting (h_state, c_state)
+            hs_list = []
+            for i, h in enumerate(hidden):
+                if not isinstance(h, torch.Tensor):
+                    print(f"❌ hidden[{i}] is not Tensor: {type(h)}")
+                    return
+                hs_list.append(h.detach().cpu().numpy())
+            # 保存はまとめて1つのエントリとして
+            self.states.append(hs_list)
+            print(f"✅ Saved mixed hidden state (h_state, c_state). total={len(self.states)}")
+            return
+
+        print("❌ Hidden state is neither Tensor nor tuple of Tensors.")
+
+    def attach_hooks(self, lnn_model):
+        """Attach forward hooks to all LNN layers."""
+        if not self.enable or self.initialized:
+            return
+        
+        if lnn_model is not None:
+            h = lnn_model.register_forward_hook(self._hook_fn)
+            self.hooks.append(h)
+            print(f"  [LNN Recorder] Registered hook on LNN model")
+        else:
+            print(f"  [LNN Recorder] Warning: No LNN model found")
+        
+        self.initialized = True
+
+    def detach_hooks(self):
+        """Remove all hooks."""
+        for h in self.hooks:
+            h.remove()
+        self.hooks = []
+
+    def capture_hparams(self, lnn_model):
+        """Capture hyperparameters from an LTC LNN model."""
+        if not self.enable or self.hparams is not None:
+            return
+
+        hparams = {}
+
+        cell = lnn_model.rnn_cell
+
+        # 基本情報
+        hparams['state_size'] = getattr(cell, 'state_size', None)
+        hparams['sensory_size'] = getattr(cell, 'sensory_size', None)
+        hparams['motor_size'] = getattr(cell, 'motor_size', None)
+        hparams['output_size'] = getattr(cell, 'output_size', None)
+
+        params_of_interest = [
+            "gleak", "vleak", "cm", "w", "sigma", "mu", "erev",
+            "sensory_w", "sensory_sigma", "sensory_mu", "sensory_erev",
+            "input_w", "input_b", "output_w", "output_b", "sparsity_mask", "sensory_sparsity_mask"
+        ]
+        params = {}
+        for k in params_of_interest:
+            if k in cell._params:
+                v = cell._params[k]
+                if isinstance(v, torch.nn.Parameter):
+                    params[k] = v.detach().cpu().numpy()
+                else:
+                    params[k] = deepcopy(v)
+        hparams['params'] = params
+
+        # ワイヤリング情報
+        if hasattr(cell, '_wiring'):
+            wiring = cell._wiring
+            hparams['wiring_units'] = getattr(wiring, 'units', None)
+            hparams['input_dim'] = getattr(wiring, 'input_dim', None)
+            hparams['output_dim'] = getattr(wiring, 'output_dim', None)
+            hparams['adjacency_matrix'] = getattr(wiring, 'adjacency_matrix', None)
+            hparams['sensory_adjacency_matrix'] = getattr(wiring, 'sensory_adjacency_matrix', None)
+
+        self.hparams = hparams
+
+    def _to_serializable(self, obj):
+        """Recursively convert numpy arrays and other types to JSON-serializable types."""
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, (np.float32, np.float64, np.int32, np.int64)):
+            return obj.item()
+        if isinstance(obj, dict):
+            return {k: self._to_serializable(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [self._to_serializable(v) for v in obj]
+        return obj
+
+    def save_to_hdf5(self, path):
+        """Save recorded states and hparams to HDF5."""
+        if not self.enable:
+            return
+        print(f"  [LNN Recorder] Saving {len(self.states)} states to: {path}")
+
+        # ディレクトリが存在しない場合は作成
+        import os
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        
+        with h5py.File(path, "w") as f:
+            # 状態の保存
+            if self.states:
+                states_grp = f.create_group("states")
+                for i, state in enumerate(self.states):
+                    states_grp.create_dataset(
+                            f"step_{i}", 
+                            data=state, 
+                            compression='gzip'
+                        )
+                    
+            # hparamsの保存
+            if self.hparams:
+                hparams_grp = f.create_group("hparams")
+                
+                # パラメータを個別に保存
+                if 'params' in self.hparams:
+                    params_grp = hparams_grp.create_group("params")
+                    for k, v in self.hparams['params'].items():
+                        if isinstance(v, np.ndarray):
+                            params_grp.create_dataset(k, data=v, compression='gzip')
+                    print(f"    Saved {len(self.hparams['params'])} parameters")
+                
+                # その他のメタデータ
+                for k, v in self.hparams.items():
+                    if k != 'params' and v is not None:
+                        if isinstance(v, np.ndarray):
+                            hparams_grp.create_dataset(k, data=v, compression='gzip')
+                        else:
+                            try:
+                                hparams_grp.attrs[k] = self._to_serializable(v)
+                            except:
+                                pass
+            else:
+                print("    ⚠️  Warning: No hparams to save!")
+
+    def reset(self):
+        """Clear recorded states."""
+        self.states = []
+
+def rollout(policy, env, horizon, render=False, video_writer=None, video_skip=5, return_obs=False, camera_names=None, performance_monitor=None, obs_keys=None, lnn_record=False):
     """
     Helper function to carry out rollouts. Supports on-screen rendering, off-screen rendering to a video, 
     and returns the rollout trajectory.
@@ -117,6 +284,14 @@ def rollout(policy, env, horizon, render=False, video_writer=None, video_skip=5,
     assert isinstance(env, EnvBase) or isinstance(env, EnvWrapper)
     assert isinstance(policy, RolloutPolicy)
     assert not (render and (video_writer is not None))
+
+    if lnn_record:
+        lnn_recorder = LNNStateRecorder(enable=True, device='cuda')
+        
+        core = policy.policy.nets['policy'].core
+        print("LNN recording core:", core)
+        lnn_recorder.capture_hparams(core)
+        lnn_recorder.attach_hooks(core)
 
     policy.start_episode()
     obs = env.reset()
@@ -198,6 +373,11 @@ def rollout(policy, env, horizon, render=False, video_writer=None, video_skip=5,
 
     except env.rollout_exceptions as e:
         print("WARNING: got rollout exception {}".format(e))
+
+    finally:
+        if lnn_record:
+            lnn_recorder.save_to_hdf5("/work/tmp/lnn_hparams.hdf5")
+            lnn_recorder.detach_hooks()
 
     stats = dict(Return=total_reward, 
                 Horizon=(step_i + 1), 
@@ -302,6 +482,11 @@ def run_trained_agent(args):
             'avg_cpu_memory_increase_mb',
             'std_cpu_memory_increase_mb'
         ]
+
+        csv_dir = os.path.dirname(args.csv_path)
+        if csv_dir and not os.path.exists(csv_dir):
+            os.makedirs(csv_dir, exist_ok=True)
+
         if os.path.exists(args.csv_path):
             print("CSV file {} already exists and will be appended.".format(args.csv_path))
             csv_file = open(args.csv_path, mode='a', newline='')
@@ -332,8 +517,10 @@ def run_trained_agent(args):
             return_obs=(write_dataset and args.dataset_obs),
             camera_names=args.camera_names,
             performance_monitor=PerformanceMonitor(device=device),
-            obs_keys=obs_keys
+            obs_keys=obs_keys,
+            lnn_record=args.lnn_record
         )
+        args.lnn_record = False  # only record LNN states for the first rollout
         rollout_stats.append(stats)
         print(f"Rollout {i+1}/{rollout_num_episodes}", end='\r', flush=True)
 
@@ -497,6 +684,13 @@ if __name__ == "__main__":
         type=int,
         default=None,
         help="(optional) set seed for rollouts",
+    )
+
+    parser.add_argument(
+        "--lnn_record",
+        type=bool,
+        default=False,
+        help="If true, record LNN states during rollout.",
     )
 
     args = parser.parse_args()

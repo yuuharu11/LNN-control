@@ -19,9 +19,6 @@ conda activate robomimic_venv
 
 ### 3. Install Dependencies
 ```bash
-# Install robosuite
-pip install robosuite
-
 # Install system libraries
 apt update
 apt install -y libgl1-mesa-glx libglib2.0-0 libsm6 libxext6 libxrender-dev libgomp1
