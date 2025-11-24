@@ -524,6 +524,9 @@ def main(args):
     if args.num_epochs is not None:
         config.train.num_epochs = args.num_epochs
 
+    if args.seq_len is not None:
+        config.train.seq_length = args.seq_len
+
     if args.units is not None:
         config.algo.lnn.units[1]["units"] = args.units
 
@@ -636,6 +639,13 @@ if __name__ == "__main__":
         "--num_epochs",
         type=int,
         help="(optional) number of training epochs"
+    )
+
+    parser.add_argument(
+        "--seq_len",
+        type=int,
+        default=None,
+        help="(optional) sequentional length of training"
     )
 
     parser.add_argument(
