@@ -259,7 +259,20 @@ class LNNStateRecorder:
         """Clear recorded states."""
         self.states = []
 
-def rollout(policy, env, horizon, render=False, video_writer=None, video_skip=5, return_obs=False, camera_names=None, performance_monitor=None, obs_keys=None, lnn_record=False):
+# add noise to actions
+def add_observation_noise(obs, noise_std):
+    noisy_obs = {}
+    for k in obs:
+        if isinstance(obs[k], np.ndarray) and np.issubdtype(obs[k].dtype, np.floating):
+            noise = np.random.normal(0, noise_std, size=obs[k].shape)
+            noisy_obs[k] = obs[k] + noise
+        else:
+            noisy_obs[k] = obs[k]
+    return noisy_obs
+
+
+def rollout(policy, env, horizon, render=False, video_writer=None, video_skip=5, return_obs=False, camera_names=None, 
+            performance_monitor=None, obs_keys=None, lnn_record=False, observation_noise=None):
     """
     Helper function to carry out rollouts. Supports on-screen rendering, off-screen rendering to a video, 
     and returns the rollout trajectory.
@@ -295,10 +308,14 @@ def rollout(policy, env, horizon, render=False, video_writer=None, video_skip=5,
 
     policy.start_episode()
     obs = env.reset()
+
     state_dict = env.get_state()
 
     # hack that is necessary for robosuite tasks for deterministic action playback
     obs = env.reset_to(state_dict)
+
+    if observation_noise is not None:
+        obs = add_observation_noise(obs, observation_noise)
 
     # filter observation(for low dim policy)
     obs = ObsUtils.filter_obs(obs, obs_keys)
@@ -329,6 +346,10 @@ def rollout(policy, env, horizon, render=False, video_writer=None, video_skip=5,
 
             # play action
             next_obs, r, done, _ = env.step(act)
+
+            if observation_noise is not None:
+                next_obs = add_observation_noise(next_obs, observation_noise)
+
             t3 = time.time()
             env_step_times.append(t3 - t2)
 
@@ -691,6 +712,13 @@ if __name__ == "__main__":
         type=bool,
         default=False,
         help="If true, record LNN states during rollout.",
+    )
+
+    parser.add_argument(
+        "--observation_noise",
+        type=float,
+        default=None,
+        help="If provided, add Gaussian noise with this stddev to observations during rollout.",
     )
 
     args = parser.parse_args()

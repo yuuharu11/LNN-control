@@ -1,8 +1,7 @@
 #!/bin/bash
-# filepath: /work/robomimic/train_lnn.sh
 
-# ===== Multiple Seeds & Datasets Training Script =====
-# LNN モデルを複数の seed と dataset で学習します
+# ===== Multiple Seeds & Datasets & Units Training Script =====
+# NCP モデルを複数の seed、dataset、units で学習します
 
 SEEDS=(1)
 WANDB_PROJECT="robomimic_lift"
@@ -10,43 +9,75 @@ DATASETS=(
     "/work/robomimic/datasets/lift/ph/low_dim_v15.hdf5"
     "/work/robomimic/datasets/lift/mh/low_dim_v15.hdf5"
 )
+# ✅ UNITS パラメータを追加
+UNITS=(128 256)
 
-
-echo "🚀 LNN mixed_memory Training with Multiple Seeds"
+echo "🚀 NCP mixed_memory Training with Multiple Seeds, Datasets & Units"
 echo "   Project: $WANDB_PROJECT"
 echo "   Seeds: ${SEEDS[@]}"
 echo "   Datasets: ${#DATASETS[@]}"
+echo "   Units: ${UNITS[@]}"
 echo ""
 
-TOTAL=$((${#SEEDS[@]} * ${#DATASETS[@]}))
+# ✅ TOTAL を計算（Seeds × Datasets × Units）
+TOTAL=$((${#SEEDS[@]} * ${#DATASETS[@]} * ${#UNITS[@]}))
 COUNT=0
+COMPLETED=0
+FAILED=0
+
+echo "Total runs: $TOTAL"
+echo ""
 
 # ===== ループで学習実行 =====
 for SEED in "${SEEDS[@]}"; do
   for DATA_PATH in "${DATASETS[@]}"; do
-    COUNT=$((COUNT + 1))
-    
-    # データセット名(ph, mg, mh)をファイルパスではなく親ディレクトリから取得
-    DATA_TYPE_DIR=$(dirname "$DATA_PATH")
-    DATASET_NAME=$(basename "$DATA_TYPE_DIR")
-    
-    # wandb_name と exp_name を設定
-    WANDB_NAME="lnn_lstm_${DATASET_NAME}"
-    EXP_NAME="lift/lnn_lstm/${DATASET_NAME}"
-    
-    echo "[$COUNT/$TOTAL] 🌱 Starting: seed=$SEED, dataset=$DATASET_NAME"
-    echo "   wandb_name: $WANDB_NAME"
-    
-    python /work/robomimic/robomimic/scripts/train.py \
-      --name "$EXP_NAME" \
-      --dataset "$DATA_PATH" \
-      --config /work/robomimic/robomimic/exps/my_params/lnn_lstm.json \
-      --seed "$SEED" \
-      --wandb_project "$WANDB_PROJECT" \
-      --wandb_name "$WANDB_NAME" 
+    # ✅ UNITS のループを追加
+    for UNIT in "${UNITS[@]}"; do
+      COUNT=$((COUNT + 1))
+      
+      # データセット名(ph, mg, mh)をファイルパスではなく親ディレクトリから取得
+      DATA_TYPE_DIR=$(dirname "$DATA_PATH")
+      DATASET_NAME=$(basename "$DATA_TYPE_DIR")
+      
+      # ✅ wandb_name と exp_name に UNIT を含める
+      WANDB_NAME="ncp_u${UNIT}_seed${SEED}_${DATASET_NAME}"
+      EXP_NAME="lift/ncp/new-${DATASET_NAME}/unit${UNIT}/seed${SEED}"
+      
+      echo "[$COUNT/$TOTAL] 🌱 Starting: seed=$SEED, dataset=$DATASET_NAME, unit=$UNIT"
+      echo "   wandb_name: $WANDB_NAME"
+      echo "   exp_name: $EXP_NAME"
+      echo ""
+      
+      # ✅ エラーハンドリングを追加
+      if python /work/robomimic/robomimic/scripts/train.py \
+        --name "$EXP_NAME" \
+        --dataset "$DATA_PATH" \
+        --config /work/robomimic/robomimic/exps/my_params/default/ncp.json \
+        --num_epochs 200 \
+        --seed "$SEED" \
+        --units "$UNIT" \
+        --wandb_project "$WANDB_PROJECT" \
+        --wandb_name "$WANDB_NAME" \
+        --wandb; then
+        COMPLETED=$((COMPLETED + 1))
+        echo "✅ $WANDB_NAME completed successfully"
+      else
+        FAILED=$((FAILED + 1))
+        echo "❌ $WANDB_NAME failed"
+      fi
+      
+      echo ""
+    done
   done
 done
 
 echo ""
-echo "✅ $TOTAL/$TOTAL トレーニング完了"
+echo "=========================================="
+echo "🏁 全トレーニング完了"
+echo "=========================================="
+echo "完了: $COMPLETED/$TOTAL"
+echo "失敗: $FAILED/$TOTAL"
+echo ""
+echo "📊 W&B ダッシュボード:"
+echo "   https://wandb.ai/yuuharuharuya1120-japan/$WANDB_PROJECT"
 echo ""
