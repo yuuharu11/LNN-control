@@ -43,9 +43,6 @@ for config_spec in "${CAN_CONFIGS[@]}"; do
     
     python /work/robomimic/robomimic/scripts/train.py \
         --config "$CONFIG_PATH" \
-        --name "$EXP_NAME" \
-        --num_epochs 1000 \
-        --seed 1 \
         --wandb_project "$WANDB_PROJECT" \
         --wandb_name "$WANDB_NAME" \
         --wandb \
