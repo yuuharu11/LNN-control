@@ -19,7 +19,7 @@ declare -A models=(
 )
 
 # ノイズレベルの配列（0.0から1.0まで0.1刻み）
-NOISE_LEVELS=(0.0 0.01 0.02)
+NOISE_LEVELS=(0.03 0.04 0.05)
 
 # 各モデルとノイズレベルに対して推論を実行
 for name in "${!models[@]}"; do

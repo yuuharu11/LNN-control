@@ -539,7 +539,8 @@ def run_trained_agent(args):
             camera_names=args.camera_names,
             performance_monitor=PerformanceMonitor(device=device),
             obs_keys=obs_keys,
-            lnn_record=args.lnn_record
+            lnn_record=args.lnn_record,
+            observation_noise=args.observation_noise,
         )
         args.lnn_record = False  # only record LNN states for the first rollout
         rollout_stats.append(stats)

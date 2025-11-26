@@ -12,11 +12,8 @@ echo ""
 declare -a CAN_CONFIGS=(
     "bc:can/ph/low_dim"
     "bc_rnn:can/ph/low_dim"
-    "bcq:can/ph/low_dim"
-    "cql:can/ph/low_dim"
-    "hbc:can/ph/low_dim"
-    "iris:can/ph/low_dim"
 )
+
 
 TOTAL=${#CAN_CONFIGS[@]}
 echo "Total runs: $TOTAL"
@@ -47,7 +44,7 @@ for config_spec in "${CAN_CONFIGS[@]}"; do
     python /work/robomimic/robomimic/scripts/train.py \
         --config "$CONFIG_PATH" \
         --name "$EXP_NAME" \
-        --num_epochs 200 \
+        --num_epochs 1000 \
         --seed 1 \
         --wandb_project "$WANDB_PROJECT" \
         --wandb_name "$WANDB_NAME" \
