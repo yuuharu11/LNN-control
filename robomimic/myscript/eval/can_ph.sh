@@ -10,8 +10,8 @@ CSV_PATH="/work/robomimic/csv/eval/can-ph.csv"
 # name と dataset_path の対応を associative array で定義
 declare -A models=(
   # can task models
-  ["bc-ph"]="/work/robomimic/bc_trained_models/core/bc/can/ph/models/model_epoch_450_low_dim_v15_success_0.86.pth"
-  ["bc-rnn-ph"]="/work/robomimic/bc_trained_models/core/bc_rnn/can/ph/models/model_epoch_450_low_dim_v15_success_0.86.pth"
+  ["bc-ph"]="/work/robomimic/bc_trained_models/core/bc/can/ph/low_dim/trained_models/core_bc_can_ph_low_dim/models/model_epoch_250_low_dim_v15_success_0.88.pth"
+  ["bc-rnn-ph"]="/work/robomimic/bc_trained_models/core/bc_rnn/can/ph/low_dim/trained_models/core_bc_rnn_can_ph_low_dim/models/model_epoch_2000.pth"
   #["bcq-ph"]="/work/robomimic/bc_trained_models/can/bcq/ph/models/model_epoch_150_low_dim_v15_success_0.28.pth"
   #["cql-ph"]=/work/robomimic/bc_trained_models/core/cql/can/ph/low_dim/trained_models/core_cql_can_ph_low_dim/models/model_epoch_1750_low_dim_v15_success_0.18.pth
   #["hbc-ph"]="/work/robomimic/bc_trained_models/can/hbc/ph/models/model_epoch_50_low_dim_v15_success_0.84.pth"

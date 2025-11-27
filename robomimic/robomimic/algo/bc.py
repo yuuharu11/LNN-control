@@ -56,6 +56,8 @@ def algo_config_to_class(algo_config):
             algo_class, algo_kwargs = BC_RNN_GMM, {}
         elif transformer_enabled:
             algo_class, algo_kwargs = BC_Transformer_GMM, {}
+        elif lnn_enabled:
+            algo_class, algo_kwargs = BC_LNN_GMM, {}
         else:
             algo_class, algo_kwargs = BC_GMM, {}
     elif vae_enabled:
@@ -994,3 +996,160 @@ class BC_LNN(BC):
         """
         self._lnn_hidden_state = None
         self._lnn_counter = 0
+
+class BC_LNN_GMM(BC):
+    """
+    BC with Liquid Neural Network (LNN) policy and GMM output distribution.
+    
+    Combines:
+    - LNN (LTC/CfC cells) for temporal dynamics modeling
+    - GMM (Gaussian Mixture Model) for multimodal action distribution
+    """
+    
+    def _create_networks(self):
+        """
+        Creates LNN policy network with GMM output.
+        """
+        assert self.obs_shapes is not None
+        
+        # Import LNN configuration helper
+        from robomimic.models.base_nets import lnn_args_from_config
+        
+        # Get LNN kwargs from config
+        lnn_kwargs = lnn_args_from_config(self.algo_config.lnn)
+        
+        print("[BC_LNN_GMM] Creating LNN + GMM Actor Network")
+        print(f"  - LNN units: {self.algo_config.lnn.units}")
+        print(f"  - GMM modes: {self.algo_config.gmm.num_modes}")
+        print(f"  - Horizon: {self.algo_config.lnn.horizon}")
+        
+        # Create LNN + GMM Actor Network
+        self.nets["policy"] = PolicyNets.LNNGMMActorNetwork(
+            obs_shapes=self.obs_shapes,
+            goal_shapes=self.goal_shapes,
+            ac_dim=self.ac_dim,
+            mlp_layer_dims=self.algo_config.actor_layer_dims,  # Not used but kept for compatibility
+            encoder_kwargs=ObsUtils.obs_encoder_kwargs_from_config(
+                self.obs_config.encoder
+            ),
+            # GMM parameters
+            num_modes=self.algo_config.gmm.num_modes,
+            min_std=self.algo_config.gmm.min_std,
+            std_activation=self.algo_config.gmm.std_activation,
+            low_noise_eval=self.algo_config.gmm.low_noise_eval,
+            # LNN parameters
+            **lnn_kwargs,
+        )
+        
+        self.nets = self.nets.float().to(self.device)
+    
+    def process_batch_for_training(self, batch):
+        """
+        Processes input batch from a data loader to filter out
+        relevant information and prepare the batch for training.
+
+        Args:
+            batch (dict): dictionary with torch.Tensors sampled
+                from a data loader
+
+        Returns:
+            input_batch (dict): processed and filtered batch that
+                will be used for training
+        """
+        horizon = self.algo_config.lnn.horizon
+        input_batch = dict()
+        
+        # Remove time padding if present (for sequence data)
+        input_batch["obs"] = {k: batch["obs"][k][:, :horizon] for k in batch["obs"]}
+        input_batch["goal_obs"] = batch.get("goal_obs", None)
+        
+        # Target actions (remove padding to match horizon)
+        input_batch["actions"] = batch["actions"][:, :horizon]
+        
+        # Data augmentation (if enabled)
+        input_batch["obs"] = ObsUtils.process_obs_dict(input_batch["obs"])
+        if input_batch["goal_obs"] is not None:
+            input_batch["goal_obs"] = ObsUtils.process_obs_dict(input_batch["goal_obs"])
+        
+        return TensorUtils.to_device(TensorUtils.to_float(input_batch), self.device)
+    
+    def _forward_training(self, batch):
+        """
+        Internal helper function for BC_LNN_GMM algo class. Compute forward pass
+        and return network outputs in @predictions dict.
+
+        Args:
+            batch (dict): dictionary with torch.Tensors sampled
+                from a data loader and filtered by @process_batch_for_training
+
+        Returns:
+            predictions (dict): dictionary containing network outputs
+        """
+        # Get GMM distribution from policy
+        dists = self.nets["policy"].forward_train(
+            obs_dict=batch["obs"],
+            goal_dict=batch["goal_obs"]
+        )
+        # [B, T] shape
+        log_probs = dists.log_prob(batch["actions"])
+        predictions = OrderedDict(
+            log_probs=log_probs,
+        )
+        return predictions
+    
+    def _compute_losses(self, predictions, batch):
+        """
+        Internal helper function for BC_LNN_GMM algo class. Compute losses based on
+        network outputs in @predictions dict, using reference labels in @batch.
+
+        Args:
+            predictions (dict): dictionary containing network outputs, from @_forward_training
+            batch (dict): dictionary with torch.Tensors sampled
+                from a data loader and filtered by @process_batch_for_training
+
+        Returns:
+            losses (dict): dictionary of losses computed over the batch
+        """
+        # GMM loss: negative log-likelihood
+        action_loss = -predictions["log_probs"].mean()
+        return OrderedDict(
+            log_probs=-action_loss,
+            action_loss=action_loss,
+        )
+    
+    def log_info(self, info):
+        """
+        Process info dictionary from @train_on_batch to summarize
+        information to pass to tensorboard for logging.
+
+        Args:
+            info (dict): dictionary of info
+
+        Returns:
+            loss_log (dict): name -> summary statistic
+        """
+        log = PolicyAlgo.log_info(self, info)
+        log["Loss"] = info["losses"]["action_loss"].item()
+        if "log_probs" in info["losses"]:
+            log["Log_Likelihood"] = info["losses"]["log_probs"].mean().item()
+        return log
+    
+    def get_action(self, obs_dict, goal_dict=None):
+        """
+        Get policy action outputs.
+
+        Args:
+            obs_dict (dict): current observation
+            goal_dict (dict): (optional) goal
+
+        Returns:
+            action (torch.Tensor): action tensor
+        """
+        assert not self.nets.training
+        
+        dists = self.nets["policy"](
+            obs_dict=obs_dict,
+            goal_dict=goal_dict
+        )
+
+        return dists.sample()
