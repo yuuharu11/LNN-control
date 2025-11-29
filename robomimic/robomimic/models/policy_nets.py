@@ -1700,23 +1700,18 @@ class LNNActorNetwork(nn.Module):
 
         a = self.head(y)[:, 0, :]  # [B, A]
         return torch.tanh(a), new_state
-
+    
 class LNNGMMActorNetwork(LNNActorNetwork):
     """
-    Liquid Neural Network (LTC/CfC) with Gaussian Mixture Model output.
-    
-    Architecture:
-    - Observation Encoder (inherited from parent)
-    - LTC/CfC cell for temporal dynamics
-    - GMM head for multimodal action distribution
+    Liquid Neural Network (LTC/CfC) with Gaussian Mixture Model output,
+    analogous to RNNGMMActorNetwork but using LNN core.
     """
-    
     def __init__(
-        self, 
-        obs_shapes, 
-        goal_shapes, 
-        ac_dim, 
-        mlp_layer_dims, 
+        self,
+        obs_shapes,
+        goal_shapes,
+        ac_dim,
+        mlp_layer_dims,
         encoder_kwargs,
         num_modes=5,
         min_std=0.01,
@@ -1725,36 +1720,6 @@ class LNNGMMActorNetwork(LNNActorNetwork):
         use_tanh=False,
         **lnn_args
     ):
-        """
-        Args:
-            obs_shapes (OrderedDict): observation shapes
-            goal_shapes (OrderedDict): goal observation shapes
-            ac_dim (int): action dimension
-            mlp_layer_dims (list): MLP layer dimensions (currently unused for GMM)
-            encoder_kwargs (dict): encoder configuration
-            num_modes (int): number of GMM modes
-            min_std (float): minimum std output from network
-            std_activation (str): 'softplus' or 'exp'
-            low_noise_eval (bool): if True, use low noise at eval time
-            use_tanh (bool): if True, wrap distribution with Tanh
-            **lnn_args: LNN configuration (horizon, lnn config, etc.)
-        """
-        # GMM parameters
-        self.num_modes = num_modes
-        self.min_std = min_std
-        self.low_noise_eval = low_noise_eval
-        self.use_tanh = use_tanh
-        
-        # Define activations to use
-        self.activations = {
-            "softplus": F.softplus,
-            "exp": torch.exp,
-        }
-        assert std_activation in self.activations, \
-            f"std_activation must be one of: {list(self.activations.keys())}; got: {std_activation}"
-        self.std_activation = std_activation
-        
-        # Call parent constructor (this creates self.core)
         super().__init__(
             obs_shapes=obs_shapes,
             ac_dim=ac_dim,
@@ -1763,273 +1728,92 @@ class LNNGMMActorNetwork(LNNActorNetwork):
             encoder_kwargs=encoder_kwargs,
             **lnn_args
         )
-        
-        # ✅ Override parent's self.head with GMM-specific heads
-        # Parent creates self.head for single action output, we replace it
         core_output_dim = self.core.d_output
-        
-        # GMM output heads
         self.mean_head = nn.Linear(core_output_dim, num_modes * ac_dim)
         self.scale_head = nn.Linear(core_output_dim, num_modes * ac_dim)
         self.logits_head = nn.Linear(core_output_dim, num_modes)
-        
-        # Remove or ignore parent's self.head since we use separate heads
-        delattr(self, 'head')
-        
-        print(f"[LNNGMMActorNetwork] Created with {num_modes} modes, "
-              f"core_output={core_output_dim}, ac_dim={ac_dim}")
-    
+        self.num_modes = num_modes
+        self.ac_dim = ac_dim
+        self.min_std = min_std
+        self.low_noise_eval = low_noise_eval
+        self.use_tanh = use_tanh
+        self.activations = {
+            "softplus": F.softplus,
+            "exp": torch.exp,
+        }
+        assert std_activation in self.activations
+        self.std_activation = std_activation
+
     def _reshape_gmm_params(self, params):
-        """
-        Reshape GMM parameters from [B, T, num_modes * ac_dim] to [B, T, num_modes, ac_dim]
-        
-        Args:
-            params (torch.Tensor): [B, T, num_modes * ac_dim]
-        
-        Returns:
-            torch.Tensor: [B, T, num_modes, ac_dim]
-        """
         B, T, _ = params.shape
         return params.reshape(B, T, self.num_modes, self.ac_dim)
-    
+
     def _postprocess_scales(self, scales):
-        """
-        Post-process scale values: apply activation and clamp.
-        
-        Args:
-            scales (torch.Tensor): raw scale outputs [B, T, num_modes, ac_dim]
-        
-        Returns:
-            torch.Tensor: processed scales [B, T, num_modes, ac_dim]
-        """
-        # Apply activation (softplus or exp)
-        scales = self.activations[self.std_activation](scales)
-        
-        # Add minimum std and clamp
-        scales = scales + self.min_std
-        
+        scales = self.activations[self.std_activation](scales) + self.min_std
         return scales
-    
+
     def forward_train(self, obs_dict, goal_dict=None, rnn_init_state=None, return_state=False):
-        """
-        Return full GMM distribution for training.
-        
-        Args:
-            obs_dict (dict): observations {k: [B, T, Dk]}
-            goal_dict (dict): goal observations (unused currently)
-            rnn_init_state: initial RNN state
-            return_state (bool): whether to return final state
-        
-        Returns:
-            dist (Distribution): GMM distribution with batch_shape=[B, T], event_shape=[ac_dim]
-            state (optional): final RNN state if return_state=True
-        """
-        # Process observations
-        x = self._process_obs_and_times(obs_dict)  # [B, T, Din]
+        x = self._process_obs_and_times(obs_dict)
+        if x.dim() == 2:
+            x = x.unsqueeze(1)
         B, T, _ = x.shape
-        
-        # Prepare timespans
         timespans = torch.ones((B, T), device=x.device) * self.timespans
-        
-        # Forward through LTC/CfC core
         y, state = self._call_core(x, timespans=timespans, rnn_state=rnn_init_state)
-        # y: [B, T, core_output_dim]
-        
-        # ✅ Compute GMM parameters through separate heads
-        raw_means = self.mean_head(y)     # [B, T, num_modes * ac_dim]
-        raw_scales = self.scale_head(y)   # [B, T, num_modes * ac_dim]
-        raw_logits = self.logits_head(y)  # [B, T, num_modes]
-        
-        # Reshape to GMM format
-        means = self._reshape_gmm_params(raw_means)   # [B, T, num_modes, ac_dim]
-        scales = self._reshape_gmm_params(raw_scales)  # [B, T, num_modes, ac_dim]
-        logits = raw_logits                            # [B, T, num_modes]
-        
-        # Apply tanh to means if not using tanh-GMM
+        raw_means = self.mean_head(y)
+        raw_scales = self.scale_head(y)
+        raw_logits = self.logits_head(y)
+        means = self._reshape_gmm_params(raw_means)
+        scales = self._reshape_gmm_params(raw_scales)
+        logits = raw_logits
         if not self.use_tanh:
             means = torch.tanh(means)
-        
-        # Process scales
         if self.low_noise_eval and (not self.training):
-            # Low noise at eval: override with very small std
             scales = torch.ones_like(means) * 1e-4
         else:
-            # Apply activation and clamping
             scales = self._postprocess_scales(scales)
-        
-        # ✅ Create GMM distribution
-        # Component distribution: Normal per mode
         component_distribution = D.Normal(loc=means, scale=scales)
-        component_distribution = D.Independent(component_distribution, 1)  # event_shape=[ac_dim]
-        
-        # Mixture distribution: Categorical over modes
+        component_distribution = D.Independent(component_distribution, 1)
         mixture_distribution = D.Categorical(logits=logits)
-        
-        # Mixture Same Family
         dist = D.MixtureSameFamily(
             mixture_distribution=mixture_distribution,
             component_distribution=component_distribution,
         )
-        
-        # Wrap with Tanh if needed
         if self.use_tanh:
             dist = TanhWrappedDistribution(base_dist=dist, scale=1.)
-        
         if return_state:
             return dist, state
-        else:
-            return dist
-    
-    def forward(self, obs_dict, goal_dict=None, rnn_init_state=None, return_state=False):
-        """
-        Sample actions from the GMM distribution.
-        
-        Args:
-            obs_dict (dict): observations {k: [B, T, Dk]}
-            goal_dict (dict): goal observations
-            rnn_init_state: initial RNN state
-            return_state (bool): whether to return final state
-        
-        Returns:
-            actions (torch.Tensor): sampled actions [B, T, ac_dim]
-            state (optional): final RNN state if return_state=True
-        """
-        result = self.forward_train(
-            obs_dict, 
-            goal_dict, 
-            rnn_init_state=rnn_init_state, 
-            return_state=return_state
-        )
-        
-        if return_state:
-            dist, state = result
-        else:
-            dist = result
-            state = None
-        
-        # Sample or return deterministic action
-        if self.low_noise_eval and (not self.training):
-            # Deterministic: return mean of most likely mode
-            try:
-                # Extract underlying distribution parameters
-                if isinstance(dist, TanhWrappedDistribution):
-                    base_dist = dist.base_dist
-                else:
-                    base_dist = dist
-                
-                # Get means and logits
-                loc = base_dist.component_distribution.base_dist.loc  # [B, T, num_modes, ac_dim]
-                logits = base_dist.mixture_distribution.logits        # [B, T, num_modes]
-                
-                # Find most likely mode
-                mode_idx = torch.argmax(logits, dim=-1)  # [B, T]
-                
-                # Gather corresponding means
-                B, T, K, A = loc.shape
-                mode_idx_exp = mode_idx.unsqueeze(-1).unsqueeze(-1).expand(B, T, 1, A)
-                chosen_means = torch.gather(loc, dim=2, index=mode_idx_exp).squeeze(2)  # [B, T, ac_dim]
-                
-                # Apply tanh if not already applied
-                if self.use_tanh:
-                    chosen_means = torch.tanh(chosen_means)
-                
-                if return_state:
-                    return chosen_means, state
-                return chosen_means
-            except Exception as e:
-                print(f"Warning: Could not extract deterministic action, sampling instead: {e}")
-                # Fallback to sampling
-                pass
-        
-        # Sample from distribution
-        actions = dist.sample()
-        
-        if return_state:
-            return actions, state
-        return actions
-    
+        return dist
+
     def forward_train_step(self, obs_dict, goal_dict=None, rnn_state=None):
-        """
-        Single-step forward for training (without time dimension).
-        
-        Args:
-            obs_dict (dict): observations {k: [B, Dk]}
-            goal_dict (dict): goal observations
-            rnn_state: RNN state
-        
-        Returns:
-            dist (Distribution): GMM distribution with batch_shape=[B], event_shape=[ac_dim]
-            state: updated RNN state
-        """
-        # Add time dimension
-        seq_obs = TensorUtils.to_sequence(obs_dict)  # {k: [B, 1, Dk]}
-        
-        # Forward
-        dist, state = self.forward_train(
-            seq_obs, 
-            goal_dict=goal_dict, 
-            rnn_init_state=rnn_state, 
-            return_state=True
-        )
-        
-        # Remove time dimension from distribution
-        if isinstance(dist, TanhWrappedDistribution):
-            base_dist = dist.base_dist
-        else:
-            base_dist = dist
-        
-        # Extract parameters and squeeze time dimension
-        loc = base_dist.component_distribution.base_dist.loc.squeeze(1)    # [B, num_modes, ac_dim]
-        scale = base_dist.component_distribution.base_dist.scale.squeeze(1) # [B, num_modes, ac_dim]
-        logits = base_dist.mixture_distribution.logits.squeeze(1)          # [B, num_modes]
-        
-        # Recreate distribution without time dimension
+        seq_obs = TensorUtils.to_sequence(obs_dict)
+        dist, state = self.forward_train(seq_obs, goal_dict, rnn_init_state=rnn_state, return_state=True)
+        # squeeze time dimension
+        loc = dist.component_distribution.base_dist.loc.squeeze(1)
+        scale = dist.component_distribution.base_dist.scale.squeeze(1)
+        logits = dist.mixture_distribution.logits.squeeze(1)
         component_distribution = D.Normal(loc=loc, scale=scale)
         component_distribution = D.Independent(component_distribution, 1)
         mixture_distribution = D.Categorical(logits=logits)
-        
-        ad = D.MixtureSameFamily(
+        dist = D.MixtureSameFamily(
             mixture_distribution=mixture_distribution,
             component_distribution=component_distribution,
         )
-        
-        if self.use_tanh:
-            ad = TanhWrappedDistribution(base_dist=ad, scale=1.)
-        
-        return ad, state
-    
-    def forward_step(self, obs_dict, goal_dict=None, rnn_state=None):
-        """
-        Single-step inference (without time dimension).
-        
-        Args:
-            obs_dict (dict): observations {k: [B, Dk]}
-            goal_dict (dict): goal observations
-            rnn_state: RNN state
-        
-        Returns:
-            actions (torch.Tensor): actions [B, ac_dim]
-            state: updated RNN state
-        """
-        # Add time dimension
-        seq_obs = TensorUtils.to_sequence(obs_dict)  # {k: [B, 1, Dk]}
-        
-        # Forward
-        actions, state = self.forward(
-            seq_obs, 
-            goal_dict=goal_dict, 
-            rnn_init_state=rnn_state, 
-            return_state=True
-        )
-        
-        # Remove time dimension
-        if actions.dim() == 3 and actions.shape[1] == 1:
-            actions = actions[:, 0]  # [B, ac_dim]
-        
-        return actions, state
-    
-    def _to_string(self):
-        """Info to pretty print."""
-        return (f"LNNGMMActorNetwork(ac_dim={self.ac_dim}, num_modes={self.num_modes}, "
-                f"std_activation={self.std_activation}, low_noise_eval={self.low_noise_eval}, "
-                f"min_std={self.min_std}, use_tanh={self.use_tanh})")
+        return dist, state
+
+    def forward(self, obs_dict, goal_dict=None, rnn_init_state=None, return_state=False, deterministic=False):
+        dist, state = self.forward_train_step(obs_dict, goal_dict, rnn_state=rnn_init_state)
+        if deterministic and self.low_noise_eval and (not self.training):
+            # choose most likely mode
+            loc = dist.component_distribution.base_dist.loc  # [B, num_modes, ac_dim]
+            logits = dist.mixture_distribution.logits        # [B, num_modes]
+            mode_idx = torch.argmax(logits, dim=-1)         # [B]
+            mode_idx_exp = mode_idx.unsqueeze(-1).expand_as(loc[:,0,:])
+            actions = torch.gather(loc, 1, mode_idx_exp.unsqueeze(1)).squeeze(1)
+        else:
+            actions = dist.sample()
+        if return_state:
+            return actions, state
+        return actions
+
+    def forward_step(self, obs_dict, goal_dict=None, rnn_state=None, deterministic=False):
+        return self.forward(obs_dict, goal_dict, rnn_init_state=rnn_state, return_state=True, deterministic=deterministic)

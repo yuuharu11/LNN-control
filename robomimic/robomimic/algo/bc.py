@@ -1091,6 +1091,7 @@ class BC_LNN_GMM(BC):
             goal_dict=batch["goal_obs"]
         )
         # [B, T] shape
+        assert len(dists.batch_shape) == 2
         log_probs = dists.log_prob(batch["actions"])
         predictions = OrderedDict(
             log_probs=log_probs,
@@ -1147,9 +1148,5 @@ class BC_LNN_GMM(BC):
         """
         assert not self.nets.training
         
-        dists = self.nets["policy"](
-            obs_dict=obs_dict,
-            goal_dict=goal_dict
-        )
+        return self.nets["policy"](obs_dict, goal_dict=goal_dict)
 
-        return dists.sample()
