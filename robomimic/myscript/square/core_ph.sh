@@ -36,9 +36,9 @@ for config_spec in "${SQUARE_CONFIGS[@]}"; do
     DATASET_TYPE=$(echo "$DATASET" | cut -d'/' -f2)
 
     WANDB_NAME="${MODEL}_${DATASET_TYPE}"
-    EXP_NAME="/work/robomimic/bc_trained_models/square/${MODEL}/${DATASET_TYPE}"
+    EXP_NAME="/work/robomimic/bc_trained_models/square/${MODEL}-nogmm/${DATASET_TYPE}"
 
-    CONFIG_PATH="/work/robomimic/robomimic/exps/paper/core/${DATASET}/${MODEL}.json"
+    CONFIG_PATH="/work/robomimic/robomimic/exps/my_params/square/${MODEL}.json"
     
     echo "[$COUNT/$TOTAL] 🌱 Starting: $WANDB_NAME"
     echo "              Config: $CONFIG_PATH"
@@ -47,7 +47,6 @@ for config_spec in "${SQUARE_CONFIGS[@]}"; do
     python /work/robomimic/robomimic/scripts/train.py \
         --config "$CONFIG_PATH" \
         --name "$EXP_NAME" \
-        --num_epochs 200 \
         --seed 1 \
         --wandb_project "$WANDB_PROJECT" \
         --wandb_name "$WANDB_NAME" \

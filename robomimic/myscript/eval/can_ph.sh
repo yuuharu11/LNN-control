@@ -10,8 +10,10 @@ CSV_PATH="/work/robomimic/csv/eval/can-ph.csv"
 # name と dataset_path の対応を associative array で定義
 declare -A models=(
   # can task models
-  ["bc-ph"]="/work/robomimic/bc_trained_models/core/bc/can/ph/low_dim/trained_models/core_bc_can_ph_low_dim/models/model_epoch_250_low_dim_v15_success_0.88.pth"
-  ["bc-rnn-ph"]="/work/robomimic/bc_trained_models/core/bc_rnn/can/ph/low_dim/trained_models/core_bc_rnn_can_ph_low_dim/models/model_epoch_2000.pth"
+  #["bc-ph"]="/work/robomimic/bc_trained_models/core/bc/can/ph/low_dim/trained_models/core_bc_can_ph_low_dim/models/model_epoch_250_low_dim_v15_success_0.88.pth"
+  ["bc-pure"]="/work/robomimic/bc_trained_models/can/bc-pure/ph/models/model_epoch_250_low_dim_v15_success_0.74.pth"
+  #["bc-rnn-ph"]="/work/robomimic/bc_trained_models/core/bc_rnn/can/ph/low_dim/trained_models/core_bc_rnn_can_ph_low_dim/models/model_epoch_2000.pth"
+  ["bc-rnn-pure"]="/work/robomimic/bc_trained_models/can/bc_rnn-pure/ph/models/model_epoch_200_low_dim_v15_success_1.0.pth"
   #["bcq-ph"]="/work/robomimic/bc_trained_models/can/bcq/ph/models/model_epoch_150_low_dim_v15_success_0.28.pth"
   #["cql-ph"]=/work/robomimic/bc_trained_models/core/cql/can/ph/low_dim/trained_models/core_cql_can_ph_low_dim/models/model_epoch_1750_low_dim_v15_success_0.18.pth
   #["hbc-ph"]="/work/robomimic/bc_trained_models/can/hbc/ph/models/model_epoch_50_low_dim_v15_success_0.84.pth"
@@ -25,6 +27,9 @@ declare -A models=(
   #["ncp-ph_u256_seed1"]="/work/robomimic/bc_trained_models/can/ncp/ph/unit256/seed1/models/model_epoch_200_low_dim_v15_success_0.86.pth"
   #["ncp-ph_u256_seed2"]="/work/robomimic/bc_trained_models/can/ncp/ph/unit256/seed2/models/model_epoch_100_low_dim_v15_success_0.96.pth"
   #["ncp-ph_u256_seed3"]="/work/robomimic/bc_trained_models/can/ncp/ph/unit256/seed3/models/model_epoch_150_low_dim_v15_success_0.94.pth"
+  ["ncp_nm-u128"]="/work/robomimic/bc_trained_models/can/ncp-pure/ph/unit128/seed1/models/model_epoch_450_low_dim_v15_success_0.72.pth"
+  ["ncp_nm-u256"]="/work/robomimic/bc_trained_models/can/ncp-pure/ph/unit256/seed1/models/model_epoch_250_low_dim_v15_success_0.78.pth"
+  ["ncp_nm-u512"]="/work/robomimic/bc_trained_models/can/ncp-pure/ph/unit512/seed1/models/model_epoch_400_low_dim_v15_success_0.86.pth"
   )
 
 # 各データセットに対して逐次推論を実行

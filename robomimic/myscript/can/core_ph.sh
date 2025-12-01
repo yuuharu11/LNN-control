@@ -33,15 +33,16 @@ for config_spec in "${CAN_CONFIGS[@]}"; do
     DATASET_TYPE=$(echo "$DATASET" | cut -d'/' -f2)
 
     WANDB_NAME="${MODEL}_${DATASET_TYPE}"
-    EXP_NAME="/work/robomimic/bc_trained_models/can/${MODEL}/${DATASET_TYPE}"
+    EXP_NAME="/work/robomimic/bc_trained_models/can/${MODEL}-nogmm/${DATASET_TYPE}"
 
-    CONFIG_PATH="/work/robomimic/robomimic/exps/paper/core/${DATASET}/${MODEL}.json"
+    CONFIG_PATH="/work/robomimic/robomimic/exps/my_params/can/${MODEL}.json"
     
     echo "[$COUNT/$TOTAL] 🌱 Starting: $WANDB_NAME"
     echo "              Config: $CONFIG_PATH"
     echo ""
     
     python /work/robomimic/robomimic/scripts/train.py \
+        --name "$EXP_NAME" \
         --config "$CONFIG_PATH" \
         --wandb_project "$WANDB_PROJECT" \
         --wandb_name "$WANDB_NAME" \

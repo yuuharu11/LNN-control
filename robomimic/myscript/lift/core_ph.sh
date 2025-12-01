@@ -12,10 +12,10 @@ echo ""
 declare -a LIFT_CONFIGS=(
     "bc:lift/ph/low_dim"
     "bc_rnn:lift/ph/low_dim"
-    "bcq:lift/ph/low_dim"
-    "cql:lift/ph/low_dim"
-    "hbc:lift/ph/low_dim"
-    "iris:lift/ph/low_dim"
+    #"bcq:lift/ph/low_dim"
+    #"cql:lift/ph/low_dim"
+    #"hbc:lift/ph/low_dim"
+    #"iris:lift/ph/low_dim"
 )
 
 TOTAL=${#LIFT_CONFIGS[@]}
@@ -36,9 +36,9 @@ for config_spec in "${LIFT_CONFIGS[@]}"; do
     DATASET_TYPE=$(echo "$DATASET" | cut -d'/' -f2)
 
     WANDB_NAME="${MODEL}_${DATASET_TYPE}"
-    EXP_NAME="${MODEL}/${DATASET_TYPE}"
+    EXP_NAME="/work/robomimic/bc_trained_models/lift/${MODEL}-nogmm/${DATASET_TYPE}"
 
-    CONFIG_PATH="/work/robomimic/robomimic/exps/paper/core/${DATASET}/${MODEL}.json"
+    CONFIG_PATH="/work/robomimic/robomimic/exps/my_params/lift/${MODEL}.json"
     
     echo "[$COUNT/$TOTAL] 🌱 Starting: $WANDB_NAME"
     echo "              Config: $CONFIG_PATH"
