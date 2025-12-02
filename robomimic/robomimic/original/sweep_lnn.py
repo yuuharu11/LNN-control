@@ -6,14 +6,14 @@ import wandb
 
 def main():
     run = wandb.init(
-        project="robomimic_lnn_sweeps",
+        project="robomimic_lnn_can_sweeps",
         settings=wandb.Settings(init_timeout=120),
         resume="never"
     )
     cfg = run.config  # agent から受け取る設定にアクセス
 
     # ベース設定を読み込み（LNN 用）
-    base_cfg_path = "/work/robomimic/robomimic/exps/templates/bc_lnn.json"
+    base_cfg_path = "/work/robomimic/robomimic/exps/my_params/default/ncp_pure.json"
     with open(base_cfg_path, 'r') as f:
         base_config = json.load(f)
 
@@ -58,14 +58,15 @@ def main():
         f"lr{lr:.0e}_l2{l2:.0e}"
     )
 
-    base_config["train"]["num_epochs"] = 50
-    base_config["experiment"]["save"]["every_n_epochs"] = 25
-    base_config["experiment"]["rollout"]["rate"] = 25
+    base_config["train"]["num_epochs"] = 20
+    base_config["train"]["batch_size"] = 1000
+    base_config["experiment"]["save"]["every_n_epochs"] = 10
+    base_config["experiment"]["rollout"]["rate"] = 10
 
     # ✅ wandb 設定
     base_config["experiment"].setdefault("logging", {})
     base_config["experiment"]["logging"]["log_wandb"] = True
-    base_config["experiment"]["logging"]["wandb_proj_name"] = "robomimic_lnn_sweeps"
+    base_config["experiment"]["logging"]["wandb_proj_name"] = "robomimic_lnn_can_sweeps"
     base_config["experiment"]["logging"]["wandb_run_name"] = run_name
     base_config["experiment"]["name"] = f"lnn_sweep/{run_name}"
 
