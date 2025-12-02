@@ -1,35 +1,76 @@
 # Robosuite & Robomimic 統合リポジトリ
 
-このリポジトリは [robosuite](https://github.com/ARISE-Initiative/robosuite) と [robomimic](https://github.com/ARISE-Initiative/robomimic) を統合し、末梢神経モデルの実験を行う環境です。  
-ロボット操作タスクの学習や推論を簡単に試すことができます(予定)。
+このリポジトリは [robosuite](https://github.com/ARISE-Initiative/robosuite) と [robomimic](https://github.com/ARISE-Initiative/robomimic) を統合し、反射モデルの実験を行う環境です。  
 
 ## 概要
 
-- **Robosuite**: 物理シミュレーションによるロボット環境を提供。
-- **Robomimic**: 模倣学習アルゴリズム（BC, BCQ, CQL など）やデータセットを提供。
-- **目的**: 低次元データや画像ベースのロボットデータセットを用いた政策学習と評価を手軽に行う。
+- **Robosuite**: MuJoCoベースの物理シミュレーションによるロボット環境を提供
+- **Robomimic**: 模倣学習アルゴリズム（BC, BCQ, CQL など）や模倣学習用のデータセットを提供
+- **目的**: 低次元データや画像ベースのロボットデータセットを用いたポリシー学習と推論を行う
 
 ## インストール
+参考：
+https://robomimic.github.io/docs/introduction/overview.html
+
 
 ```bash
 # リポジトリのクローン
 git clone https://github.com/yourusername/your-repo.git
 cd your-repo
 
-# Python 仮想環境の作成
-python3 -m venv robomimic_venv
-source robomimic_venv/bin/activate
+# 仮想環境構築用のMinicondaのインストール
+apt install wget
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh
+bash /tmp/miniconda.sh -b -p $HOME/miniconda3
+$HOME/miniconda3/bin/conda init bash
+source $HOME/.bashrc && conda --version
 
-# 必要なパッケージのインストール
+# Python 仮想環境の作成
+conda create -n robomimic_venv python=3.10
+conda activate robomimic_venv
+
+# robomimicのインストール
+cd robomimic
+pip install -e .
+
+# robosuiteのインストール
+cd robosuite
 pip install -r requirements.txt
 
+# 必要なパッケージのインストール
+# Install system libraries
+apt update
+apt install -y libgl1-mesa-glx libglib2.0-0 libsm6 libxext6 libxrender-dev libgomp1
+
+# For OSMesa (for CPU rendering)
+apt install -y libosmesa6-dev
+conda install -c conda-forge libstdcxx-ng
+
+pip install ncps
+pip install -r /work/requirements.txt
+
 ```
-## 報酬系
-/robosuite/enviroments/manipulation/下のpythonファイルにてreward関数で定義
-例）Liftタスク（1ステップ）
-・Reaching：グリッパーと物体の距離に応じて定義（0-1.0）
-・Grasping：物体の把持（0.25）
-・Lifting：物体がテーブルから4cm以上浮いている（0.5）
-・High Lift：物体がテーブルから15cm以上浮いている（1.0）
-・Success：タスクが成功条件を満たしている（2.0）
+
+## セットアップ
+### データセットのダウンロード
+全てのタスクのダウンロード
+```bash
+python /work/robomimic/robomimic/scripts/download_datasets.py --tasks all
+```
+データセットのhdf5ファイルは/work/robomimic/datasets下におく
+
+### configファイルの作成
+論文の再現実験用のconfigファイルは以下のコマンドで取得できる
+```bash
+python /work/robomimic/robomimic/scripts/generate_paper_configs.py
+```
+configファイルは/work/robomimic/robomimic/exps下におく
+ここで学習や推論の細かい設定を行う
+
+### 学習のテンプレート
+```bash
+python train.py --config yourconfig.json --dataset yourdataset.hdf5
+```
+
+
 
