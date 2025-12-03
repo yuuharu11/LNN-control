@@ -3,10 +3,10 @@
 # ===== Multiple Seeds & Datasets & Units Training Script =====
 # NCP モデルを複数の seed、dataset、units で学習します
 
-SEEDS=(1)
-WANDB_PROJECT="robomimic_can"
+SEEDS=(3)
+WANDB_PROJECT="robomimic_square"
 DATASETS=(
-    "/work/robomimic/datasets/can/ph/low_dim_v15.hdf5"
+    "/work/robomimic/datasets/square/ph/low_dim_v15.hdf5"
 )
 # ✅ UNITS パラメータを追加
 UNITS=(128)
@@ -30,7 +30,6 @@ echo ""
 # ===== ループで学習実行 =====
 for SEED in "${SEEDS[@]}"; do
   for DATA_PATH in "${DATASETS[@]}"; do
-    # ✅ UNITS のループを追加
     for UNIT in "${UNITS[@]}"; do
       COUNT=$((COUNT + 1))
       
@@ -39,8 +38,8 @@ for SEED in "${SEEDS[@]}"; do
       DATASET_NAME=$(basename "$DATA_TYPE_DIR")
       
       # ✅ wandb_name と exp_name に UNIT を含める
-      WANDB_NAME="ncp_u${UNIT}_seed${SEED}_${DATASET_NAME}"
-      EXP_NAME="can/ncp-pure-best/${DATASET_NAME}/unit${UNIT}/seed${SEED}"
+      WANDB_NAME="ncp_u${UNIT}_${DATASET_NAME}_seed${SEED}"
+      EXP_NAME="square/ncp-pure-best/${DATASET_NAME}/unit${UNIT}/seed${SEED}"
       
       echo "[$COUNT/$TOTAL] 🌱 Starting: seed=$SEED, dataset=$DATASET_NAME, unit=$UNIT"
       echo "   wandb_name: $WANDB_NAME"
@@ -51,7 +50,7 @@ for SEED in "${SEEDS[@]}"; do
       if python /work/robomimic/robomimic/scripts/train.py \
         --name "$EXP_NAME" \
         --dataset "$DATA_PATH" \
-        --config /work/robomimic/robomimic/exps/my_params/can/ncp.json \
+        --config /work/robomimic/robomimic/exps/my_params/square/ncp.json \
         --num_epochs 1000 \
         --seed "$SEED" \
         --units "$UNIT" \
@@ -74,8 +73,6 @@ echo ""
 echo "=========================================="
 echo "🏁 全トレーニング完了"
 echo "=========================================="
-echo "完了: $COMPLETED/$TOTAL"
-echo "失敗: $FAILED/$TOTAL"
 echo ""
 echo "📊 W&B ダッシュボード:"
 echo "   https://wandb.ai/yuuharuharuya1120-japan/$WANDB_PROJECT"

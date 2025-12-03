@@ -3,7 +3,7 @@
 # ===== Multiple Seeds & Datasets & Units Training Script =====
 # NCP モデルを複数の seed、dataset、units で学習します
 
-SEEDS=(1)
+SEEDS=(3)
 WANDB_PROJECT="robomimic_can"
 DATASETS=(
     "/work/robomimic/datasets/can/ph/low_dim_v15.hdf5"

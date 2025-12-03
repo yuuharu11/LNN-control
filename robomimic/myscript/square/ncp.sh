@@ -4,13 +4,12 @@
 # NCP モデルを複数の seed、dataset、units で学習します
 
 SEEDS=(1)
-SEQ_LENS=(5)
 WANDB_PROJECT="robomimic_square"
 DATASETS=(
     "/work/robomimic/datasets/square/ph/low_dim_v15.hdf5"
 )
 # ✅ UNITS パラメータを追加
-UNITS=(128 256 512)
+UNITS=(128)
 
 echo "🚀 NCP mixed_memory Training with Multiple Seeds, Datasets & Units"
 echo "   Project: $WANDB_PROJECT"
@@ -31,44 +30,41 @@ echo ""
 # ===== ループで学習実行 =====
 for SEED in "${SEEDS[@]}"; do
   for DATA_PATH in "${DATASETS[@]}"; do
-    for SEQ_LEN in "${SEQ_LENS[@]}"; do
-      for UNIT in "${UNITS[@]}"; do
-        COUNT=$((COUNT + 1))
-        
-        # データセット名(ph, mg, mh)をファイルパスではなく親ディレクトリから取得
-        DATA_TYPE_DIR=$(dirname "$DATA_PATH")
-        DATASET_NAME=$(basename "$DATA_TYPE_DIR")
-        
-        # ✅ wandb_name と exp_name に UNIT を含める
-        WANDB_NAME="ncp_u${UNIT}_seqlen${SEQ_LEN}_${DATASET_NAME}_seed${SEED}"
-        EXP_NAME="square/ncp-pure-new/${DATASET_NAME}/unit${UNIT}/seqlen${SEQ_LEN}/seed${SEED}"
-        
-        echo "[$COUNT/$TOTAL] 🌱 Starting: seed=$SEED, dataset=$DATASET_NAME, unit=$UNIT"
-        echo "   wandb_name: $WANDB_NAME"
-        echo "   exp_name: $EXP_NAME"
-        echo ""
-        
-        # ✅ エラーハンドリングを追加
-        if python /work/robomimic/robomimic/scripts/train.py \
-          --name "$EXP_NAME" \
-          --dataset "$DATA_PATH" \
-          --config /work/robomimic/robomimic/exps/my_params/default/ncp_pure.json \
-          --num_epochs 1000 \
-          --seed "$SEED" \
-          --units "$UNIT" \
-          --seq_len "$SEQ_LEN" \
-          --wandb_project "$WANDB_PROJECT" \
-          --wandb_name "$WANDB_NAME" \
-          --wandb; then
-          COMPLETED=$((COMPLETED + 1))
-          echo "✅ $WANDB_NAME completed successfully"
-        else
-          FAILED=$((FAILED + 1))
-          echo "❌ $WANDB_NAME failed"
-        fi
-        
-        echo ""
-      done
+    for UNIT in "${UNITS[@]}"; do
+      COUNT=$((COUNT + 1))
+      
+      # データセット名(ph, mg, mh)をファイルパスではなく親ディレクトリから取得
+      DATA_TYPE_DIR=$(dirname "$DATA_PATH")
+      DATASET_NAME=$(basename "$DATA_TYPE_DIR")
+      
+      # ✅ wandb_name と exp_name に UNIT を含める
+      WANDB_NAME="ncp_u${UNIT}_${DATASET_NAME}_seed${SEED}"
+      EXP_NAME="square/ncp-pure-best/${DATASET_NAME}/unit${UNIT}/seed${SEED}"
+      
+      echo "[$COUNT/$TOTAL] 🌱 Starting: seed=$SEED, dataset=$DATASET_NAME, unit=$UNIT"
+      echo "   wandb_name: $WANDB_NAME"
+      echo "   exp_name: $EXP_NAME"
+      echo ""
+      
+      # ✅ エラーハンドリングを追加
+      if python /work/robomimic/robomimic/scripts/train.py \
+        --name "$EXP_NAME" \
+        --dataset "$DATA_PATH" \
+        --config /work/robomimic/robomimic/exps/my_params/square/ncp.json \
+        --num_epochs 1000 \
+        --seed "$SEED" \
+        --units "$UNIT" \
+        --wandb_project "$WANDB_PROJECT" \
+        --wandb_name "$WANDB_NAME" \
+        --wandb; then
+        COMPLETED=$((COMPLETED + 1))
+        echo "✅ $WANDB_NAME completed successfully"
+      else
+        FAILED=$((FAILED + 1))
+        echo "❌ $WANDB_NAME failed"
+      fi
+      
+      echo ""
     done
   done
 done

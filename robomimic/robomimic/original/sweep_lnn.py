@@ -19,16 +19,9 @@ def main():
 
     # --- LNN パラメータの上書き ---
     units = int(getattr(cfg, "units", 128))
-    seq_length = int(getattr(cfg, "seq_length", 20))
-    horizon = int(getattr(cfg, "horizon", 10))
+    seq_length = int(getattr(cfg, "seq_length", 10))
+    horizon = int(getattr(cfg, "seq_length", 10))
     ode_unfolds = int(getattr(cfg, "ode_unfolds", 5))
-    epsilon = float(getattr(cfg, "epsilon", 0.1))
-
-    # ✅ seq_length ≥ horizon の制約チェック
-    if seq_length < horizon:
-        raise ValueError(
-            f"seq_length ({seq_length}) must be >= horizon ({horizon})"
-        )
 
     # LNN アルゴリズム設定
     base_config.setdefault("algo", {})
@@ -36,7 +29,6 @@ def main():
     base_config["algo"]["lnn"]["units"][1]["units"] = units
     base_config["algo"]["lnn"]["horizon"] = horizon
     base_config["algo"]["lnn"]["ode_unfolds"] = ode_unfolds
-    base_config["algo"]["lnn"]["epsilon"] = epsilon
 
     # 学習設定
     base_config["train"]["seq_length"] = seq_length
@@ -49,19 +41,19 @@ def main():
         "initial": lr
     }
     base_config["algo"]["optim_params"]["policy"].setdefault("regularization", {})
-    base_config["algo"]["optim_params"]["policy"]["regularization"]["L2"] = l2
 
     # run 名の作成
     run_name = (
-        f"lnn_u{units}_seq{seq_length}_h{horizon}_"
-        f"ode{ode_unfolds}_eps{epsilon:.2f}_"
-        f"lr{lr:.0e}_l2{l2:.0e}"
+        f"lnn_u{units}_seq{seq_length}_"
+        f"odeu{ode_unfolds}_"
+        f"lr{lr:.0e}"
     )
 
-    base_config["train"]["num_epochs"] = 20
+    base_config["train"]["num_epochs"] = 10
     base_config["train"]["batch_size"] = 1000
     base_config["experiment"]["save"]["every_n_epochs"] = 10
     base_config["experiment"]["rollout"]["rate"] = 10
+    base_config["experiment"]["rollout"]["n"] = 10
 
     # ✅ wandb 設定
     base_config["experiment"].setdefault("logging", {})
