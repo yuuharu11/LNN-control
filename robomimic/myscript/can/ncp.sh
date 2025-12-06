@@ -40,7 +40,7 @@ for SEED in "${SEEDS[@]}"; do
       
       # ✅ wandb_name と exp_name に UNIT を含める
       WANDB_NAME="ncp_u${UNIT}_seed${SEED}_${DATASET_NAME}"
-      EXP_NAME="can/ncp-pure-best/${DATASET_NAME}/unit${UNIT}/seed${SEED}"
+      EXP_NAME="can/ncp-pure-best/${DATASET_NAME}/unit${UNIT}/odeu1/seed${SEED}"
       
       echo "[$COUNT/$TOTAL] 🌱 Starting: seed=$SEED, dataset=$DATASET_NAME, unit=$UNIT"
       echo "   wandb_name: $WANDB_NAME"
@@ -51,8 +51,9 @@ for SEED in "${SEEDS[@]}"; do
       if python /work/robomimic/robomimic/scripts/train.py \
         --name "$EXP_NAME" \
         --dataset "$DATA_PATH" \
-        --config /work/robomimic/robomimic/exps/my_params/can/ncp.json \
-        --num_epochs 1000 \
+        --config /work/robomimic/robomimic/exps/my_params/can/ncp_u256.json \
+        --num_epochs 500 \
+        --odeu 1 \
         --seed "$SEED" \
         --units "$UNIT" \
         --wandb_project "$WANDB_PROJECT" \

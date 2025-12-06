@@ -529,6 +529,9 @@ def main(args):
 
     if args.units is not None:
         config.algo.lnn.units[1]["units"] = args.units
+    
+    if args.odeu is not None:
+        config.algo.lnn.ode_unfolds = args.odeu
 
     if args.wandb_project is not None:
         config.experiment.logging.wandb_proj_name = args.wandb_project
@@ -653,6 +656,13 @@ if __name__ == "__main__":
         type=int,
         default=None,
         help="(optional) number of units in the model"
+    )
+
+    parser.add_argument(
+        "--odeu",
+        type=int,
+        default=None,
+        help="(optional) number of ODE unfolds in the model"
     )
 
     parser.add_argument(
