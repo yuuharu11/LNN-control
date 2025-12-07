@@ -37,9 +37,12 @@ declare -A models=(
   #["ncp_u128_best_seed1"]="/work/robomimic/bc_trained_models/can/ncp-pure-best/ph/unit128/seed1/models/model_epoch_250_low_dim_v15_success_0.74.pth"
   #["ncp_u128_best_seed2"]="/work/robomimic/bc_trained_models/can/ncp-pure-best/ph/unit128/seed2/models/model_epoch_750_low_dim_v15_success_0.78.pth"
   #["ncp_u128_best_seed3"]="/work/robomimic/bc_trained_models/can/ncp-pure-best/ph/unit128/seed3/models/model_epoch_400_low_dim_v15_success_0.82.pth"
-  ["ncp_u256_best_seed1"]="/work/robomimic/bc_trained_models/can/ncp-pure-best/ph/unit256/odeu1/seed1/models/model_epoch_100_low_dim_v15_success_0.82.pth"
-  ["ncp_u256_best_seed2"]="/work/robomimic/bc_trained_models/can/ncp-pure-best/ph/unit256/odeu1/seed2/models/model_epoch_100_low_dim_v15_success_1.0.pth"
-  ["ncp_u256_best_seed3"]="/work/robomimic/bc_trained_models/can/ncp-pure-best/ph/unit256/odeu1/seed3/models/model_epoch_100_low_dim_v15_success_0.78.pth"
+  #["ncp_u256_best_seed1"]="/work/robomimic/bc_trained_models/can/ncp-pure-best/ph/unit256/odeu1/seed1/models/model_epoch_100_low_dim_v15_success_0.82.pth"
+  #["ncp_u256_best_seed2"]="/work/robomimic/bc_trained_models/can/ncp-pure-best/ph/unit256/odeu1/seed2/models/model_epoch_100_low_dim_v15_success_1.0.pth"
+  #["ncp_u256_best_seed3"]="/work/robomimic/bc_trained_models/can/ncp-pure-best/ph/unit256/odeu1/seed3/models/model_epoch_100_low_dim_v15_success_0.78.pth"
+  ["ncp_u512_best_seed1"]="/work/robomimic/bc_trained_models/can/ncp-pure-best/ph/unit512/seed1/models/model_epoch_450_low_dim_v15_success_0.76.pth"
+  ["ncp_u512_best_seed2"]="/work/robomimic/bc_trained_models/can/ncp-pure-best/ph/unit512/seed2/models/model_epoch_50_low_dim_v15_success_0.84.pth"
+  ["ncp_u512_best_seed3"]="/work/robomimic/bc_trained_models/can/ncp-pure-best/ph/unit512/seed3/models/model_epoch_350_low_dim_v15_success_0.74.pth"
   )
 
 # 各データセットに対して逐次推論を実行
