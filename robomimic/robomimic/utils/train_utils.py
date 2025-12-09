@@ -694,15 +694,18 @@ def add_noise_to_obs(obs, noise_std):
     """
     noisy_obs = {}
     noise_keys = ["robot0_eef_pos", "object", "robot0_joint_pos"]
-    for k in obs:
-        if k in noise_keys and isinstance(obs[k], np.ndarray) and np.issubdtype(obs[k].dtype, np.floating):
-            noise = np.random.normal(0, noise_std, size=obs[k].shape)
-            noisy_obs[k] = obs[k] + noise
+    for k, v in obs.items():
+        if k in noise_keys and isinstance(v, np.ndarray) and np.issubdtype(v.dtype, np.floating):
+            noise = np.random.normal(0, noise_std, size=v.shape)
+            noisy_obs[k] = v + noise
+        elif k in noise_keys and torch.is_tensor(v) and v.dtype == torch.float32:
+            noise = torch.randn_like(v) * noise_std
+            noisy_obs[k] = v + noise
         else:
-            noisy_obs[k] = obs[k]
+            noisy_obs[k] = v
     return noisy_obs
 
-def run_epoch(model, data_loader, epoch, validate=False, num_steps=None, obs_normalization_stats=None):
+def run_epoch(model, data_loader, epoch, validate=False, num_steps=None, obs_normalization_stats=None, noise_std=None):
     """
     Run an epoch of training or validation.
 
@@ -751,14 +754,16 @@ def run_epoch(model, data_loader, epoch, validate=False, num_steps=None, obs_nor
             data_loader_iter = iter(data_loader)
             t = time.time()
             batch = next(data_loader_iter)
-        
-        
+
         timing_stats["Data_Loading"].append(time.time() - t)
 
         # process batch for training
         t = time.time()
         input_batch = model.process_batch_for_training(batch)
         input_batch = model.postprocess_batch_for_training(input_batch, obs_normalization_stats=obs_normalization_stats)
+        
+        if (noise_std is not None) and (not validate):
+            input_batch["obs"] = add_noise_to_obs(input_batch["obs"], noise_std)
         timing_stats["Process_Batch"].append(time.time() - t)
 
         # forward and backward pass

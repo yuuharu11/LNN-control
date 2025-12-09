@@ -312,6 +312,7 @@ def train(config, device, resume=False):
             epoch=epoch,
             num_steps=train_num_steps,
             obs_normalization_stats=obs_normalization_stats,
+            noise_std=config.train.noise_std,
         )
         model.on_epoch_end(epoch)
 
@@ -529,6 +530,8 @@ def main(args):
 
     if args.units is not None:
         config.algo.lnn.units[1]["units"] = args.units
+
+    config.train.noise_std = args.noise_std
     
     if args.odeu is not None:
         config.algo.lnn.ode_unfolds = args.odeu
@@ -642,6 +645,13 @@ if __name__ == "__main__":
         "--num_epochs",
         type=int,
         help="(optional) number of training epochs"
+    )
+
+    parser.add_argument(
+        "--noise_std",
+        type=float,
+        default=None,
+        help="(optional) standard deviation of Gaussian noise to add to observations during training"
     )
 
     parser.add_argument(

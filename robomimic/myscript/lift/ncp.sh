@@ -3,13 +3,13 @@
 # ===== Multiple Seeds & Datasets & Units Training Script =====
 # NCP モデルを複数の seed、dataset、units で学習します
 
-SEEDS=(1)
+SEEDS=(1 2 3)
 WANDB_PROJECT="robomimic_lift"
 DATASETS=(
     "/work/robomimic/datasets/lift/ph/low_dim_v15.hdf5"
 )
 # ✅ UNITS パラメータを追加
-UNITS=(512)
+UNITS=(128 256)
 
 echo "🚀 NCP mixed_memory Training with Multiple Seeds, Datasets & Units"
 echo "   Project: $WANDB_PROJECT"
@@ -34,13 +34,12 @@ for SEED in "${SEEDS[@]}"; do
     for UNIT in "${UNITS[@]}"; do
       COUNT=$((COUNT + 1))
       
-      # データセット名(ph, mg, mh)をファイルパスではなく親ディレクトリから取得
       DATA_TYPE_DIR=$(dirname "$DATA_PATH")
       DATASET_NAME=$(basename "$DATA_TYPE_DIR")
       
       # ✅ wandb_name と exp_name に UNIT を含める
       WANDB_NAME="ncp_u${UNIT}_seed${SEED}_${DATASET_NAME}"
-      EXP_NAME="lift/ncp-pure-best/${DATASET_NAME}/unit${UNIT}/odeu1/seed${SEED}"
+      EXP_NAME="lift/ncp-pure-best/${DATASET_NAME}/unit${UNIT}/noise_0.005/seed${SEED}"
       
       echo "[$COUNT/$TOTAL] 🌱 Starting: seed=$SEED, dataset=$DATASET_NAME, unit=$UNIT"
       echo "   wandb_name: $WANDB_NAME"
@@ -51,11 +50,12 @@ for SEED in "${SEEDS[@]}"; do
       if python /work/robomimic/robomimic/scripts/train.py \
         --name "$EXP_NAME" \
         --dataset "$DATA_PATH" \
-        --config /work/robomimic/robomimic/exps/my_params/lift/ncp.json \
+        --config /work/robomimic/robomimic/exps/my_params/lift/ncp_u${UNIT}.json \
         --num_epochs 500 \
         --odeu 1 \
         --seed "$SEED" \
         --units "$UNIT" \
+        --noise_std 0.005 \
         --wandb_project "$WANDB_PROJECT" \
         --wandb_name "$WANDB_NAME" \
         --wandb; then

@@ -39,7 +39,7 @@ for SEED in "${SEEDS[@]}"; do
       
       # ✅ wandb_name と exp_name に UNIT を含める
       WANDB_NAME="ncp_u${UNIT}_seed${SEED}_${DATASET_NAME}"
-      EXP_NAME="lift/ncp-pure-best/${DATASET_NAME}/unit${UNIT}/noise_0.001/seed${SEED}"
+      EXP_NAME="lift/ncp-pure-best/${DATASET_NAME}/unit${UNIT}/noise_0.01/seed${SEED}"
       
       echo "[$COUNT/$TOTAL] 🌱 Starting: seed=$SEED, dataset=$DATASET_NAME, unit=$UNIT"
       echo "   wandb_name: $WANDB_NAME"
@@ -55,7 +55,7 @@ for SEED in "${SEEDS[@]}"; do
         --odeu 1 \
         --seed "$SEED" \
         --units "$UNIT" \
-        --noise_std 0.001 \
+        --noise_std 0.01 \
         --wandb_project "$WANDB_PROJECT" \
         --wandb_name "$WANDB_NAME" \
         --wandb; then
