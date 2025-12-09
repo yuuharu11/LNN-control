@@ -680,6 +680,27 @@ def save_model(model, config, env_meta, shape_meta, ckpt_path, variable_state=No
     torch.save(params, ckpt_path)
     print("save checkpoint to {}".format(ckpt_path))
 
+def add_noise_to_obs(obs, noise_std):
+    """
+    Add Gaussian noise to observations.
+
+    Args:
+        obs (dict): dictionary of observations
+
+        noise_std (float): standard deviation of Gaussian noise to add to observations
+
+    Returns:
+        noisy_obs (dict): dictionary of observations with added noise
+    """
+    noisy_obs = {}
+    noise_keys = ["robot0_eef_pos", "object", "robot0_joint_pos"]
+    for k in obs:
+        if k in noise_keys and isinstance(obs[k], np.ndarray) and np.issubdtype(obs[k].dtype, np.floating):
+            noise = np.random.normal(0, noise_std, size=obs[k].shape)
+            noisy_obs[k] = obs[k] + noise
+        else:
+            noisy_obs[k] = obs[k]
+    return noisy_obs
 
 def run_epoch(model, data_loader, epoch, validate=False, num_steps=None, obs_normalization_stats=None):
     """
@@ -730,6 +751,8 @@ def run_epoch(model, data_loader, epoch, validate=False, num_steps=None, obs_nor
             data_loader_iter = iter(data_loader)
             t = time.time()
             batch = next(data_loader_iter)
+        
+        
         timing_stats["Data_Loading"].append(time.time() - t)
 
         # process batch for training

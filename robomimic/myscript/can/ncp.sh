@@ -40,7 +40,7 @@ for SEED in "${SEEDS[@]}"; do
       
       # ✅ wandb_name と exp_name に UNIT を含める
       WANDB_NAME="ncp_u${UNIT}_seed${SEED}_${DATASET_NAME}"
-      EXP_NAME="can/ncp-pure-best/${DATASET_NAME}/unit${UNIT}/seed${SEED}"
+      EXP_NAME="can/ncp-pure-best/${DATASET_NAME}/new/unit${UNIT}/seed${SEED}"
       
       echo "[$COUNT/$TOTAL] 🌱 Starting: seed=$SEED, dataset=$DATASET_NAME, unit=$UNIT"
       echo "   wandb_name: $WANDB_NAME"

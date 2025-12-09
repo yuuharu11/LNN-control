@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # モデルファイルと共通パラメータ
-DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15.hdf5"
+DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_5.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
 SEED=0
@@ -23,7 +23,7 @@ declare -A models=(
 )
 
 # ノイズレベルの配列（0.0から0.1まで0.01刻み）
-NOISE_LEVELS=(0.001)
+NOISE_LEVELS=(0.025)
 # 各モデルとノイズレベルに対して推論を実行
 for name in "${!models[@]}"; do
     model_path="${models[$name]}"

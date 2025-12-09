@@ -261,13 +261,40 @@ class LNNStateRecorder:
 
 # add noise to actions
 def add_observation_noise(obs, noise_std):
+    """
+    def format_array(arr, max_len=6):
+        arr = np.asarray(arr).flatten()
+        if arr.size <= max_len:
+            return np.array2string(arr, precision=10, separator=', ')
+        else:
+            head = np.array2string(arr[:3], precision=10, separator=', ')
+            tail = np.array2string(arr[-3:], precision=10, separator=', ')
+            return f"[{head} ... {tail}] (shape={arr.shape})"
+
+    print("[Observation before noise]")
+    for key, val in obs.items():
+        if isinstance(val, np.ndarray):
+            print(f"  {key}: {format_array(val)}")
+        else:
+            print(f"  {key}: {val}")
+    """
     noisy_obs = {}
+    noise_keys = ["robot0_eef_pos", "object", "robot0_joint_pos"]
     for k in obs:
-        if isinstance(obs[k], np.ndarray) and np.issubdtype(obs[k].dtype, np.floating):
+        if k in noise_keys and isinstance(obs[k], np.ndarray) and np.issubdtype(obs[k].dtype, np.floating):
             noise = np.random.normal(0, noise_std, size=obs[k].shape)
             noisy_obs[k] = obs[k] + noise
         else:
             noisy_obs[k] = obs[k]
+    return noisy_obs
+    """
+    print("[Observation after noise]")
+    for key, val in noisy_obs.items():
+        if isinstance(val, np.ndarray):
+            print(f"  {key}: {format_array(val)}")
+        else:
+            print(f"  {key}: {val}")
+    """
     return noisy_obs
 
 
