@@ -261,7 +261,7 @@ class LNNStateRecorder:
 
 # quantize model weights to n_levels
 def ptq_weight_symmetric(
-    model,
+    policy: RolloutPolicy,
     n_bits: int = 8,
     verbose: bool = True
 ):
@@ -287,9 +287,9 @@ def ptq_weight_symmetric(
         print("--------------------------------")
 
     with torch.no_grad():
-        for name, p in model.named_parameters():
+        for name, p in  policy.policy.nets['policy'].core.rnn_cell.named_parameters():
 
-            if "weight" not in name:
+            if name != "w" and name != "sensory_w":
                 if verbose:
                     print(f"[SKIP] {name} (not a weight)")
                 continue
@@ -547,6 +547,31 @@ def run_trained_agent(args):
 
     # restore policy
     policy, ckpt_dict = FileUtils.policy_from_checkpoint(ckpt_path=ckpt_path, device=device, verbose=True)
+
+    ltc_cell = policy.policy.nets['policy'].core.rnn_cell
+    for name, p in ltc_cell.named_parameters():
+        print(name, p.shape)
+    try:
+        with torch.no_grad():
+            if "w" in ltc_cell._params and "sparsity_mask" in ltc_cell._params:
+                w = ltc_cell._params["w"]
+                mask = ltc_cell._params["sparsity_mask"]
+                if isinstance(w, torch.nn.Parameter) and isinstance(mask, torch.Tensor):
+                    w.mul_(mask) 
+                    print("[Sparsify] Applied sparsity_mask to 'w'")
+            else:
+                print("[Sparsify] Skip 'w': mask or weight not found")
+
+            if "sensory_w" in ltc_cell._params and "sensory_sparsity_mask" in ltc_cell._params:
+                sw = ltc_cell._params["sensory_w"]
+                smask = ltc_cell._params["sensory_sparsity_mask"]
+                if isinstance(sw, torch.nn.Parameter) and isinstance(smask, torch.Tensor):
+                    sw.mul_(smask) 
+                    print("[Sparsify] Applied sensory_sparsity_mask to 'sensory_w'")
+            else:
+                print("[Sparsify] Skip 'sensory_w': mask or weight not found")
+    except Exception as e:
+        print(f"[Sparsify] Failed to apply masks before quantization: {e}")
 
     # quantization
     if args.quantization is not None:
