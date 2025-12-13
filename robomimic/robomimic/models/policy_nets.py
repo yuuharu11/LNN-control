@@ -23,6 +23,7 @@ from robomimic.models.vae_nets import VAE
 from robomimic.models.distributions import TanhWrappedDistribution
 from robomimic.models.lnn.ltc import LTC
 from robomimic.models.lnn.cfc import CfC
+from robomimic.models.lnn.ltc_quantize import LTC_Quantize
 
 
 class ActorNetwork(MIMO_MLP):
@@ -1596,36 +1597,39 @@ class LNNActorNetwork(nn.Module):
         # LTC コア
         ltc_kwargs = dict(lnn_args["lnn"])
         ltc_kwargs["input_size"] = in_dim
-        if self.core_type == "LTC":
-            self.core = LTC(
-                input_size=ltc_kwargs["input_size"],
-                units=ltc_kwargs["units"],
-                return_sequences=True,
-                batch_first=True,
-                mixed_memory=ltc_kwargs["mixed_memory"],
-                input_mapping=ltc_kwargs["input_mapping"],
-                output_mapping=ltc_kwargs["output_mapping"],
-                ode_unfolds=ltc_kwargs["ode_unfolds"],
-                epsilon=ltc_kwargs["epsilon"],
-                implicit_param_constraints=ltc_kwargs["implicit_param_constraints"],
-                dropout=0.0,
-                transposed=False,
-            )
-        elif self.core_type == "CfC":
-            self.core = CfC(
-                input_size=ltc_kwargs["input_size"],
-                units=ltc_kwargs["units"],
-                return_sequences=True,
-                batch_first=True,
-                mixed_memory=ltc_kwargs["mixed_memory"],
-                mode=ltc_kwargs.get("mode", "default"),
-                activation=ltc_kwargs.get("activation", "lecun_tanh"),
-                backbone_units=ltc_kwargs.get("backbone_units", None),
-                backbone_layers=ltc_kwargs.get("backbone_layers", None),
-                backbone_dropout=ltc_kwargs.get("backbone_dropout", None),
-                dropout=0.0,
-                transposed=False,
-            )
+        if "digital_RRAM_quantization" in ltc_kwargs or "digital_SRAM_quantization" in ltc_kwargs:
+            raise NotImplementedError("LNNActorNetwork does not support RRAM/SRAM quantization options.")
+        else:
+            if self.core_type == "LTC":
+                self.core = LTC(
+                    input_size=ltc_kwargs["input_size"],
+                    units=ltc_kwargs["units"],
+                    return_sequences=True,
+                    batch_first=True,
+                    mixed_memory=ltc_kwargs["mixed_memory"],
+                    input_mapping=ltc_kwargs["input_mapping"],
+                    output_mapping=ltc_kwargs["output_mapping"],
+                    ode_unfolds=ltc_kwargs["ode_unfolds"],
+                    epsilon=ltc_kwargs["epsilon"],
+                    implicit_param_constraints=ltc_kwargs["implicit_param_constraints"],
+                    dropout=0.0,
+                    transposed=False,
+                )
+            elif self.core_type == "CfC":
+                self.core = CfC(
+                    input_size=ltc_kwargs["input_size"],
+                    units=ltc_kwargs["units"],
+                    return_sequences=True,
+                    batch_first=True,
+                    mixed_memory=ltc_kwargs["mixed_memory"],
+                    mode=ltc_kwargs.get("mode", "default"),
+                    activation=ltc_kwargs.get("activation", "lecun_tanh"),
+                    backbone_units=ltc_kwargs.get("backbone_units", None),
+                    backbone_layers=ltc_kwargs.get("backbone_layers", None),
+                    backbone_dropout=ltc_kwargs.get("backbone_dropout", None),
+                    dropout=0.0,
+                    transposed=False,
+                )
 
         # 出力ヘッド(decoderの役割)
         layers = []
@@ -1700,7 +1704,7 @@ class LNNActorNetwork(nn.Module):
 
         a = self.head(y)[:, 0, :]  # [B, A]
         return torch.tanh(a), new_state
-    
+
 class LNNGMMActorNetwork(LNNActorNetwork):
     """
     Liquid Neural Network (LTC/CfC) with Gaussian Mixture Model output,

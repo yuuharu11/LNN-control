@@ -551,8 +551,11 @@ def run_trained_agent(args):
     ltc_cell = policy.policy.nets['policy'].core.rnn_cell
     for name, p in ltc_cell.named_parameters():
         print(name, p.shape)
+
+    """
     try:
         with torch.no_grad():
+            
             if "w" in ltc_cell._params and "sparsity_mask" in ltc_cell._params:
                 w = ltc_cell._params["w"]
                 mask = ltc_cell._params["sparsity_mask"]
@@ -572,6 +575,7 @@ def run_trained_agent(args):
                 print("[Sparsify] Skip 'sensory_w': mask or weight not found")
     except Exception as e:
         print(f"[Sparsify] Failed to apply masks before quantization: {e}")
+    """
 
     # quantization
     if args.quantization is not None:
@@ -593,6 +597,11 @@ def run_trained_agent(args):
                 obs_keys = list(config.observation.value_planner.planner.modalities.obs.low_dim)
         if args.odeu is not None:
             config.algo.lnn.ode_unfolds = args.odeu
+        # add quantize params if has digital quantization
+        if args.digital_RRAM_quantization is not None:
+            config.algo.lnn.digital_RRAM_quantization = args.digital_RRAM_quantization
+        if args.digital_SRAM_quantization is not None:
+            config.algo.lnn.digital_SRAM_quantization = args.digital_SRAM_quantization
         
     # create environment from saved checkpoint
     env, _ = FileUtils.env_from_checkpoint(
@@ -851,6 +860,19 @@ if __name__ == "__main__":
         help="(optional) set quantization levels for rollouts",
     )
 
+    parser.add_argument(
+        "--digital_RRAM_quantization",
+        type=int,
+        default=None,
+        help="(deprecated) use --quantization instead",
+    )
+
+    parser.add_argument(
+        "--digital_SRAM_quantization",
+        type=int,
+        default=None,
+        help="(deprecated) use --quantization instead",
+    )
 
     parser.add_argument(
         "--lnn_record",
