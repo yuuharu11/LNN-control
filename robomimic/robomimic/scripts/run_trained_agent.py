@@ -259,6 +259,76 @@ class LNNStateRecorder:
         """Clear recorded states."""
         self.states = []
 
+# quantize model weights to n_levels
+def ptq_weight_symmetric(
+    model,
+    n_bits: int = 8,
+    verbose: bool = True
+):
+    """
+    Post-Training Quantization (PTQ) for model weights.
+    Symmetric, per-tensor, fake-quantization.
+
+    Args:
+        model (torch.nn.Module): target model
+        n_bits (int): number of bits (e.g., 8 -> int8 equivalent)
+        verbose (bool): print debug information
+    """
+
+    assert n_bits >= 2, "n_bits must be >= 2"
+
+    qmax = 2 ** (n_bits - 1) - 1  # e.g. 127 for int8
+
+    if verbose:
+        print("=== PTQ Weight Quantization ===")
+        print(f"  Mode        : symmetric, per-tensor")
+        print(f"  Bit-width   : {n_bits} bits")
+        print(f"  Quant range : [-{qmax}, +{qmax}]")
+        print("--------------------------------")
+
+    with torch.no_grad():
+        for name, p in model.named_parameters():
+
+            if "weight" not in name:
+                if verbose:
+                    print(f"[SKIP] {name} (not a weight)")
+                continue
+
+            max_val = p.abs().max()
+
+            # All-zero tensor safety
+            if max_val == 0:
+                if verbose:
+                    print(f"[SKIP] {name}: all-zero weights")
+                continue
+
+            scale = max_val / qmax
+
+            # Quantize
+            p_q = torch.round(p / scale).clamp(-qmax, qmax) * scale
+
+            # Debug statistics
+            if verbose:
+                orig_min = p.min().item()
+                orig_max = p.max().item()
+                q_min = p_q.min().item()
+                q_max = p_q.max().item()
+
+                mse = torch.mean((p - p_q) ** 2).item()
+
+                print(f"[LAYER] {name}")
+                print(f"  scale        : {scale:.4e}")
+                print(f"  orig range   : [{orig_min:.4e}, {orig_max:.4e}]")
+                print(f"  quant range  : [{q_min:.4e}, {q_max:.4e}]")
+                print(f"  MSE          : {mse:.4e}")
+                print("--------------------------------")
+
+            # In-place overwrite
+            p.copy_(p_q)
+
+    if verbose:
+        print("PTQ completed.\n")
+
 # add noise to actions
 def add_observation_noise(obs, noise_std):
     """
@@ -478,6 +548,10 @@ def run_trained_agent(args):
     # restore policy
     policy, ckpt_dict = FileUtils.policy_from_checkpoint(ckpt_path=ckpt_path, device=device, verbose=True)
 
+    # quantization
+    if args.quantization is not None:
+        ptq_weight_symmetric(policy, n_bits=args.quantization, verbose=True)
+
     # read rollout settings
     rollout_num_episodes = args.n_rollouts
     rollout_horizon = args.horizon
@@ -492,6 +566,9 @@ def run_trained_agent(args):
             obs_keys = list(config.observation.planner.modalities.obs.low_dim)
             if obs_keys is None or len(obs_keys) == 0:
                 obs_keys = list(config.observation.value_planner.planner.modalities.obs.low_dim)
+        if args.odeu is not None:
+            config.algo.lnn.ode_unfolds = args.odeu
+        
     # create environment from saved checkpoint
     env, _ = FileUtils.env_from_checkpoint(
         ckpt_dict=ckpt_dict, 
@@ -734,6 +811,21 @@ if __name__ == "__main__":
         default=None,
         help="(optional) set seed for rollouts",
     )
+
+    parser.add_argument(
+        "--odeu",
+        type=int,
+        default=None,
+        help="(optional) set ODEU for rollouts",
+    )
+
+    parser.add_argument(
+        "--quantization",
+        type=int,
+        default=None,
+        help="(optional) set quantization levels for rollouts",
+    )
+
 
     parser.add_argument(
         "--lnn_record",
