@@ -23,7 +23,6 @@ from robomimic.models.vae_nets import VAE
 from robomimic.models.distributions import TanhWrappedDistribution
 from robomimic.models.lnn.ltc import LTC
 from robomimic.models.lnn.cfc import CfC
-from robomimic.models.lnn.ltc_quantize import LTC_Quantize
 
 
 class ActorNetwork(MIMO_MLP):

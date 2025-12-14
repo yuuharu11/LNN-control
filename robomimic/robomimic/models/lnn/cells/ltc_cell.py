@@ -75,6 +75,9 @@ class LTCCell(SequenceModule):
         self._epsilon = epsilon
         self._clip = torch.nn.ReLU()
         self._allocate_parameters()
+        self.digital_RRAM_quantization = digital_RRAM_quantization
+        self.digital_SRAM_quantization = digital_SRAM_quantization
+        self.quantize_debug: bool = False
 
     @property
     def state_size(self):
@@ -100,25 +103,24 @@ class LTCCell(SequenceModule):
     def sensory_synapse_count(self):
         return np.sum(np.abs(self._wiring.adjacency_matrix))
 
-    def ptq_weight_symmetric(self, params, n_bits: int = 8):
+    def ptq_weight_symmetric(self, params, n_bits: int = 8, name: Optional[str] = None):
         """
-        Post-Training Quantization (PTQ) for model weights.
         Symmetric, per-tensor, fake-quantization.
-
-        Args:
-            model (torch.nn.Module): target model
-            n_bits (int): number of bits (e.g., 8 -> int8 equivalent)
-            verbose (bool): print debug information
         """
-
         assert n_bits >= 2, "n_bits must be >= 2"
-
         qmax = 2 ** (n_bits - 1) - 1
         with torch.no_grad():
             max_val = params.abs().max()
+            # ゼロガード
+            if max_val.item() == 0.0:
+                if self.quantize_debug and name is not None:
+                    print(f"[Quantize] {name}: max=0 → skip (bits={n_bits})")
+                return params
             scale = max_val / qmax
             p_q = torch.round(params / scale).clamp(-qmax, qmax) * scale
             params.copy_(p_q)
+            if self.quantize_debug and name is not None:
+                print(f"[Quantize] {name}: bits={n_bits} max={max_val.item():.6f} scale={float(scale):.6e} shape={tuple(params.shape)}")
         return params
     
     def add_weight(self, name, init_value, requires_grad=True):
@@ -248,25 +250,30 @@ class LTCCell(SequenceModule):
             elapsed_time / self._ode_unfolds
         )
 
-                # Unfold the multiply ODE multiple times into one RNN step
+        # Unfold the multiply ODE multiple times into one RNN step
         w_param = self.make_positive_fn(self._params["w"])
         gleak = self.make_positive_fn(self._params["gleak"])
         vleak = self._params["vleak"]
 
         if self.digital_RRAM_quantization is not None:
-            cm_t = self.ptq_weight_symmetric(cm_t, n_bits= self.digital_RRAM_quantization)
-            vleak = self.ptq_weight_symmetric(vleak, n_bits= self.digital_RRAM_quantization)
-            gleak = self.ptq_weight_symmetric(gleak, n_bits= self.digital_RRAM_quantization)
+            if self.quantize_debug:
+                print(f"[Quantize][RRAM] bits={self.digital_RRAM_quantization} (loop-invariant constants)")
+            cm_t = self.ptq_weight_symmetric(cm_t, n_bits= self.digital_RRAM_quantization, name="cm_t")
+            vleak = self.ptq_weight_symmetric(vleak, n_bits= self.digital_RRAM_quantization, name="vleak")
+            gleak = self.ptq_weight_symmetric(gleak, n_bits= self.digital_RRAM_quantization, name="gleak")
         
-        if self.digital_SRAM_quantization is not None:
-            v_pre = self.ptq_weight_symmetric(v_pre, n_bits= self.digital_SRAM_quantization)
-
-        # Unfold the multiply ODE multiple times into one RNN step
-        w_param = self.make_positive_fn(self._params["w"])
         for t in range(self._ode_unfolds):
             w_activation = w_param * self._sigmoid(
                 v_pre, self._params["mu"], self._params["sigma"]
             )
+
+            if self.digital_SRAM_quantization is not None:
+                do_log = (self.quantize_debug and t == 0)
+                v_pre = self.ptq_weight_symmetric(
+                    v_pre,
+                    n_bits=self.digital_SRAM_quantization,
+                    name=(f"v_pre[t=0]" if do_log else None),
+                )
 
             w_activation = w_activation * self._params["sparsity_mask"]
 
@@ -276,13 +283,12 @@ class LTCCell(SequenceModule):
             w_numerator = torch.sum(rev_activation, dim=1) + w_numerator_sensory
             w_denominator = torch.sum(w_activation, dim=1) + w_denominator_sensory
 
-            gleak = self.make_positive_fn(self._params["gleak"])
-            numerator = cm_t * v_pre + gleak * self._params["vleak"] + w_numerator
+            numerator = cm_t * v_pre + gleak * vleak + w_numerator
             denominator = cm_t + gleak + w_denominator
 
             # Avoid dividing by 0
             v_pre = numerator / (denominator + self._epsilon)
-
+        self.quantize_debug = False  # Reset after one step
         return v_pre
 
     def _map_inputs(self, inputs):

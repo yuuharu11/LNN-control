@@ -544,11 +544,29 @@ def run_trained_agent(args):
 
     # device
     device = TorchUtils.get_torch_device(try_to_use_cuda=True)
-
+    
     # restore policy
     policy, ckpt_dict = FileUtils.policy_from_checkpoint(ckpt_path=ckpt_path, device=device, verbose=True)
 
-    ltc_cell = policy.policy.nets['policy'].core.rnn_cell
+    # inject quantization settings into LTC cell
+    try:
+        ltc_cell = policy.policy.nets['policy'].core.rnn_cell
+        if ltc_cell is None:
+            print("[Quantize] LTCCell not found; skip injection.")
+        else:
+            if args.digital_RRAM_quantization is not None:
+                ltc_cell.digital_RRAM_quantization = int(args.digital_RRAM_quantization)
+                print(f"[Quantize] digital_RRAM_quantization = {ltc_cell.digital_RRAM_quantization}")
+            if args.digital_SRAM_quantization is not None:
+                ltc_cell.digital_SRAM_quantization = int(args.digital_SRAM_quantization)
+                print(f"[Quantize] digital_SRAM_quantization = {ltc_cell.digital_SRAM_quantization}")
+            if hasattr(ltc_cell, "quantize_debug") and (
+                args.digital_RRAM_quantization is not None or args.digital_SRAM_quantization is not None
+            ):
+                ltc_cell.quantize_debug = True
+    except Exception as e:
+        print(f"[Quantize] injection failed: {e}")
+    
     for name, p in ltc_cell.named_parameters():
         print(name, p.shape)
 
@@ -597,12 +615,7 @@ def run_trained_agent(args):
                 obs_keys = list(config.observation.value_planner.planner.modalities.obs.low_dim)
         if args.odeu is not None:
             config.algo.lnn.ode_unfolds = args.odeu
-        # add quantize params if has digital quantization
-        if args.digital_RRAM_quantization is not None:
-            config.algo.lnn.digital_RRAM_quantization = args.digital_RRAM_quantization
-        if args.digital_SRAM_quantization is not None:
-            config.algo.lnn.digital_SRAM_quantization = args.digital_SRAM_quantization
-        
+
     # create environment from saved checkpoint
     env, _ = FileUtils.env_from_checkpoint(
         ckpt_dict=ckpt_dict, 
