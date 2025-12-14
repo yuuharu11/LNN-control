@@ -1,12 +1,12 @@
 #!/bin/bash
 
 # モデルファイルと共通パラメータ
-DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_4.hdf5"
+DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_2.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
 SEED=0
 QUANTIZES=(8 6 4 3 2)
-CSV_BASE="/work/robomimic/csv/eval/lift/quantize/weight/"
+CSV_BASE="/work/robomimic/csv/eval/lift/quantize/digital/SRAM"
 mkdir -p ${CSV_BASE}
 
 # name と dataset_path の対応を associative array で定義
@@ -37,8 +37,8 @@ for name in "${!models[@]}"; do
             --horizon "${HORIZON}" \
             --seed "${SEED}" \
             --dataset_path "${DATASET_PATH}" \
-            --name "${name}_quantized_${quantize}bit" \
-            --quantization "${quantize}" \
+            --name "${units}_quantized_${quantize}bit" \
+            --digital_SRAM_quantization "${quantize}" \
             --csv_path "${CSV_BASE}${units}_quantized_${quantize}bit.csv"
 
         echo "Completed: ${name} with ${quantize}-bit quantization"

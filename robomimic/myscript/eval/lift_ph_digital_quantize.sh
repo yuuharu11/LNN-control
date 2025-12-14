@@ -6,20 +6,20 @@ N_ROLLOUTS=100
 HORIZON=400
 SEED=0
 QUANTIZES=(8 6 4 3 2)
-CSV_BASE="/work/robomimic/csv/eval/lift/quantize/digital/"
+CSV_BASE="/work/robomimic/csv/eval/lift/quantize/digital/RRAM"
 mkdir -p ${CSV_BASE}
 
 # name と dataset_path の対応を associative array で定義
 declare -A models=(
-  ["ncp_u128_best_seed1"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit128/seed1/models/model_epoch_100_low_dim_v15_success_1.0.pth"
-  ["ncp_u128_best_seed2"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit128/seed2/models/model_epoch_450_low_dim_v15_success_1.0.pth"
-  ["ncp_u128_best_seed3"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit128/seed3/models/model_epoch_150_low_dim_v15_success_1.0.pth"
-  ["ncp_u256_best_seed1"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed1/models/model_epoch_150_low_dim_v15_success_1.0.pthh"
-  ["ncp_u256_best_seed2"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed2/models/model_epoch_50_low_dim_v15_success_1.0.pth"
-  ["ncp_u256_best_seed3"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed3/models/model_epoch_150_low_dim_v15_success_1.0.pth"
-  ["ncp_u512_best_seed1"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit512/seed1/models/model_epoch_50_low_dim_v15_success_1.0.pth"
-  ["ncp_u512_best_seed2"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit512/seed2/models/model_epoch_50_low_dim_v15_success_1.0.pth"
-  ["ncp_u512_best_seed3"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit512/seed3/models/model_epoch_150_low_dim_v15_success_1.0.pth"
+  #["ncp_u128_best_seed1"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit128/seed1/models/model_epoch_100_low_dim_v15_success_1.0.pth"
+  #["ncp_u128_best_seed2"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit128/seed2/models/model_epoch_450_low_dim_v15_success_1.0.pth"
+  #["ncp_u128_best_seed3"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit128/seed3/models/model_epoch_150_low_dim_v15_success_1.0.pth"
+  ["ncp_u256_best_seed1"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed1/models/model_epoch_150_low_dim_v15_success_1.0.pth"
+  #["ncp_u256_best_seed2"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed2/models/model_epoch_50_low_dim_v15_success_1.0.pth"
+  #["ncp_u256_best_seed3"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed3/models/model_epoch_150_low_dim_v15_success_1.0.pth"
+  #["ncp_u512_best_seed1"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit512/seed1/models/model_epoch_50_low_dim_v15_success_1.0.pth"
+  #["ncp_u512_best_seed2"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit512/seed2/models/model_epoch_50_low_dim_v15_success_1.0.pth"
+  #["ncp_u512_best_seed3"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit512/seed3/models/model_epoch_150_low_dim_v15_success_1.0.pth"
 )
 
 # 各データセットに対して逐次推論を実行
@@ -39,7 +39,6 @@ for name in "${!models[@]}"; do
             --dataset_path "${DATASET_PATH}" \
             --name "${units}_quantized_${quantize}bit" \
             --digital_RRAM_quantization "${quantize}" \
-            --digital_SRAM_quantization "${quantize}" \
             --csv_path "${CSV_BASE}${units}_quantized_${quantize}bit.csv"
 
         echo "Completed: ${name} with ${quantize}-bit quantization"

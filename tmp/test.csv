@@ -1,2 +1,0 @@
-name,return,horizon,success_rate,avg_policy_latency_ms,std_policy_latency_ms,avg_env_step_time_ms,std_env_step_time_ms,avg_step_latency_ms,std_step_latency_ms,avg_gpu_memory_increase_mb,std_gpu_memory_increase_mb,avg_cpu_memory_increase_mb,std_cpu_memory_increase_mb
-test,0.96,62.1,0.96,13.64595719436343,8.11793779353105,10.701864944330257,0.723531799185928,25.970925209060955,8.272387955221701,62.10726092693075,0.026703005825123593,2332.7980475837476,0.0026162570918556653

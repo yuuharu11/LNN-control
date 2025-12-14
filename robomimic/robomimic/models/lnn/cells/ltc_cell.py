@@ -268,11 +268,10 @@ class LTCCell(SequenceModule):
             )
 
             if self.digital_SRAM_quantization is not None:
-                do_log = (self.quantize_debug and t == 0)
                 v_pre = self.ptq_weight_symmetric(
                     v_pre,
                     n_bits=self.digital_SRAM_quantization,
-                    name=(f"v_pre[t=0]" if do_log else None),
+                    name=(f"v_pre"),
                 )
 
             w_activation = w_activation * self._params["sparsity_mask"]

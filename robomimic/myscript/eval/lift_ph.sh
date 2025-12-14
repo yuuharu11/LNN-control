@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # モデルファイルと共通パラメータ
-DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15.hdf5"
+DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_3.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
 SEED=0
-CSV_PATH="/work/robomimic/csv/eval/lift/lift-best.csv"
+CSV_PATH="/work/robomimic/csv/eval/lift/ncp-best.csv"
 
 # name と dataset_path の対応を associative array で定義
 declare -A models=(
@@ -29,15 +29,15 @@ declare -A models=(
   #["ncp_nm_u128"]="/work/robomimic/bc_trained_models/lift/ncp-nomem/ph/unit128/seed1/models/model_epoch_450_low_dim_v15_success_1.0.pth"
   #["ncp_nm_u256"]="/work/robomimic/bc_trained_models/lift/ncp-nomem/ph/unit256/seed1/models/model_epoch_150_low_dim_v15_success_0.98.pth"
   #["ncp_nm_u512"]="/work/robomimic/bc_trained_models/lift/ncp-nomem/ph/unit512/seed1/models/model_epoch_50_low_dim_v15_success_1.0.pth"
-  #["ncp_u128_best_seed1"]="/work/robomimic/bc_trained_models/lift/ncp-pure-new/ph/unit128/seed1/models/model_epoch_200_low_dim_v15_success_1.0.pth"
-  ["ncp_u128_best_seed2"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit128/seed2/models/model_epoch_450_low_dim_v15_success_1.0.pth"
-  ["ncp_u128_best_seed3"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit128/seed3/models/model_epoch_150_low_dim_v15_success_1.0.pth"
-  #["ncp_u256_best_seed1"]="/work/robomimic/bc_trained_models/lift/ncp-pure-new/ph/unit256/seed1/models/model_epoch_100_low_dim_v15_success_0.98.pth"
-  ["ncp_u256_best_seed2"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed2/models/model_epoch_50_low_dim_v15_success_1.0.pth"
-  ["ncp_u256_best_seed3"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed3/models/model_epoch_150_low_dim_v15_success_1.0.pth"
-  #["ncp_u512_best_seed1"]="/work/robomimic/bc_trained_models/lift/ncp-pure-new/ph/unit512/seed1/models/model_epoch_50_low_dim_v15_success_0.98.pth"
-  ["ncp_u512_best_seed2"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit512/seed2/models/model_epoch_50_low_dim_v15_success_1.0.pth"
-  ["ncp_u512_best_seed3"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit512/seed3/models/model_epoch_150_low_dim_v15_success_1.0.pth"
+  #["ncp_u128_best_seed1"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit128/seed1/models/model_epoch_100_low_dim_v15_success_1.0.pth"
+  #["ncp_u128_best_seed2"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit128/seed2/models/model_epoch_450_low_dim_v15_success_1.0.pth"
+  #["ncp_u128_best_seed3"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit128/seed3/models/model_epoch_150_low_dim_v15_success_1.0.pth"
+  ["ncp_u256_best_seed1"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed1/models/model_epoch_150_low_dim_v15_success_1.0.pth"
+  #["ncp_u256_best_seed2"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed2/models/model_epoch_50_low_dim_v15_success_1.0.pth"
+  #["ncp_u256_best_seed3"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed3/models/model_epoch_150_low_dim_v15_success_1.0.pth"
+  #["ncp_u512_best_seed1"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit512/seed1/models/model_epoch_50_low_dim_v15_success_1.0.pth"
+  #["ncp_u512_best_seed2"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit512/seed2/models/model_epoch_50_low_dim_v15_success_1.0.pth"
+  #["ncp_u512_best_seed3"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit512/seed3/models/model_epoch_150_low_dim_v15_success_1.0.pth"
 )
 
 # 各データセットに対して逐次推論を実行
