@@ -29,6 +29,8 @@ class LTCCell(SequenceModule):
         ode_unfolds=6,
         epsilon=1e-8,
         implicit_param_constraints=False,
+        digital_RRAM_quantization: Optional[int] = None,
+        digital_SRAM_quantization: Optional[int] = None,
     ):
         """A `Liquid time-constant (LTC) <https://ojs.aaai.org/index.php/AAAI/article/view/16936>`_ cell.
 
@@ -98,6 +100,27 @@ class LTCCell(SequenceModule):
     def sensory_synapse_count(self):
         return np.sum(np.abs(self._wiring.adjacency_matrix))
 
+    def ptq_weight_symmetric(self, params, n_bits: int = 8):
+        """
+        Post-Training Quantization (PTQ) for model weights.
+        Symmetric, per-tensor, fake-quantization.
+
+        Args:
+            model (torch.nn.Module): target model
+            n_bits (int): number of bits (e.g., 8 -> int8 equivalent)
+            verbose (bool): print debug information
+        """
+
+        assert n_bits >= 2, "n_bits must be >= 2"
+
+        qmax = 2 ** (n_bits - 1) - 1
+        with torch.no_grad():
+            max_val = params.abs().max()
+            scale = max_val / qmax
+            p_q = torch.round(params / scale).clamp(-qmax, qmax) * scale
+            params.copy_(p_q)
+        return params
+    
     def add_weight(self, name, init_value, requires_grad=True):
         param = torch.nn.Parameter(init_value, requires_grad=requires_grad)
         self.register_parameter(name, param)
@@ -224,6 +247,19 @@ class LTCCell(SequenceModule):
         cm_t = self.make_positive_fn(self._params["cm"]) / (
             elapsed_time / self._ode_unfolds
         )
+
+                # Unfold the multiply ODE multiple times into one RNN step
+        w_param = self.make_positive_fn(self._params["w"])
+        gleak = self.make_positive_fn(self._params["gleak"])
+        vleak = self._params["vleak"]
+
+        if self.digital_RRAM_quantization is not None:
+            cm_t = self.ptq_weight_symmetric(cm_t, n_bits= self.digital_RRAM_quantization)
+            vleak = self.ptq_weight_symmetric(vleak, n_bits= self.digital_RRAM_quantization)
+            gleak = self.ptq_weight_symmetric(gleak, n_bits= self.digital_RRAM_quantization)
+        
+        if self.digital_SRAM_quantization is not None:
+            v_pre = self.ptq_weight_symmetric(v_pre, n_bits= self.digital_SRAM_quantization)
 
         # Unfold the multiply ODE multiple times into one RNN step
         w_param = self.make_positive_fn(self._params["w"])

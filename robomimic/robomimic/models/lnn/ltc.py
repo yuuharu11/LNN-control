@@ -37,6 +37,8 @@ class LTC(SequenceModule):
         # Edit: SequenceModule specific
         dropout,
         transposed,
+        digital_RRAM_quantization: Optional[int] = None,
+        digital_SRAM_quantization: Optional[int] = None,
     ):
         """Applies a `Liquid time-constant (LTC) <https://ojs.aaai.org/index.php/AAAI/article/view/16936>`_ RNN to an input sequence.
 
@@ -111,6 +113,8 @@ class LTC(SequenceModule):
             ode_unfolds=ode_unfolds,
             epsilon=epsilon,
             implicit_param_constraints=implicit_param_constraints,
+            digital_RRAM_quantization=digital_RRAM_quantization,
+            digital_SRAM_quantization=digital_SRAM_quantization,
         )
         self._wiring = wiring
         self.use_mixed = mixed_memory

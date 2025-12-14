@@ -1597,39 +1597,42 @@ class LNNActorNetwork(nn.Module):
         # LTC コア
         ltc_kwargs = dict(lnn_args["lnn"])
         ltc_kwargs["input_size"] = in_dim
-        if "digital_RRAM_quantization" in ltc_kwargs or "digital_SRAM_quantization" in ltc_kwargs:
-            raise NotImplementedError("LNNActorNetwork does not support RRAM/SRAM quantization options.")
-        else:
-            if self.core_type == "LTC":
-                self.core = LTC(
-                    input_size=ltc_kwargs["input_size"],
-                    units=ltc_kwargs["units"],
-                    return_sequences=True,
-                    batch_first=True,
-                    mixed_memory=ltc_kwargs["mixed_memory"],
-                    input_mapping=ltc_kwargs["input_mapping"],
-                    output_mapping=ltc_kwargs["output_mapping"],
-                    ode_unfolds=ltc_kwargs["ode_unfolds"],
-                    epsilon=ltc_kwargs["epsilon"],
-                    implicit_param_constraints=ltc_kwargs["implicit_param_constraints"],
-                    dropout=0.0,
-                    transposed=False,
-                )
-            elif self.core_type == "CfC":
-                self.core = CfC(
-                    input_size=ltc_kwargs["input_size"],
-                    units=ltc_kwargs["units"],
-                    return_sequences=True,
-                    batch_first=True,
-                    mixed_memory=ltc_kwargs["mixed_memory"],
-                    mode=ltc_kwargs.get("mode", "default"),
-                    activation=ltc_kwargs.get("activation", "lecun_tanh"),
-                    backbone_units=ltc_kwargs.get("backbone_units", None),
-                    backbone_layers=ltc_kwargs.get("backbone_layers", None),
-                    backbone_dropout=ltc_kwargs.get("backbone_dropout", None),
-                    dropout=0.0,
-                    transposed=False,
-                )
+
+        digital_RRAM_quantization = ltc_kwargs.get("digital_RRAM_quantization", None)
+        digital_SRAM_quantization = ltc_kwargs.get("digital_SRAM_quantization", None)
+                
+        if self.core_type == "LTC":
+            self.core = LTC(
+                input_size=ltc_kwargs["input_size"],
+                units=ltc_kwargs["units"],
+                return_sequences=True,
+                batch_first=True,
+                mixed_memory=ltc_kwargs["mixed_memory"],
+                input_mapping=ltc_kwargs["input_mapping"],
+                output_mapping=ltc_kwargs["output_mapping"],
+                ode_unfolds=ltc_kwargs["ode_unfolds"],
+                epsilon=ltc_kwargs["epsilon"],
+                implicit_param_constraints=ltc_kwargs["implicit_param_constraints"],
+                dropout=0.0,
+                transposed=False,
+                digital_RRAM_quantization=digital_RRAM_quantization,
+                digital_SRAM_quantization=digital_SRAM_quantization,
+            )
+        elif self.core_type == "CfC":
+            self.core = CfC(
+                input_size=ltc_kwargs["input_size"],
+                units=ltc_kwargs["units"],
+                return_sequences=True,
+                batch_first=True,
+                mixed_memory=ltc_kwargs["mixed_memory"],
+                mode=ltc_kwargs.get("mode", "default"),
+                activation=ltc_kwargs.get("activation", "lecun_tanh"),
+                backbone_units=ltc_kwargs.get("backbone_units", None),
+                backbone_layers=ltc_kwargs.get("backbone_layers", None),
+                backbone_dropout=ltc_kwargs.get("backbone_dropout", None),
+                dropout=0.0,
+                transposed=False,
+            )
 
         # 出力ヘッド(decoderの役割)
         layers = []
