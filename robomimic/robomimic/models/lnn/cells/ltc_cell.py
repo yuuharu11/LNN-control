@@ -31,6 +31,9 @@ class LTCCell(SequenceModule):
         implicit_param_constraints=False,
         digital_RRAM_quantization: Optional[int] = None,
         digital_SRAM_quantization: Optional[int] = None,
+        weight_quantization: Optional[int] = None,
+        CAM_quantization: Optional[int] = None,
+        LUT_quantization: Optional[int] = None,
     ):
         """A `Liquid time-constant (LTC) <https://ojs.aaai.org/index.php/AAAI/article/view/16936>`_ cell.
 
@@ -78,6 +81,9 @@ class LTCCell(SequenceModule):
         self.digital_RRAM_quantization = digital_RRAM_quantization
         self.digital_SRAM_quantization = digital_SRAM_quantization
         self.quantize_debug: bool = False
+        self.weight_quantization = weight_quantization
+        self.CAM_quantization = CAM_quantization
+        self.LUT_quantization = LUT_quantization
 
     @property
     def state_size(self):
@@ -228,50 +234,58 @@ class LTCCell(SequenceModule):
 
     def _ode_solver(self, inputs, state, elapsed_time):
         v_pre = state
+        # cm/t is loop invariant
+        cm_t = self.make_positive_fn(self._params["cm"]) / (elapsed_time / self._ode_unfolds)
+        # params
+        sensory_w_param = self.make_positive_fn(self._params["sensory_w"])
+        w_param = self.make_positive_fn(self._params["w"])
+        gleak = self.make_positive_fn(self._params["gleak"])
+        vleak = self._params["vleak"]
 
-        # We can pre-compute the effects of the sensory neurons here
-        sensory_w_activation = self.make_positive_fn(
-            self._params["sensory_w"]
-        ) * self._sigmoid(
-            inputs, self._params["sensory_mu"], self._params["sensory_sigma"]
-        )
-        sensory_w_activation = (
-            sensory_w_activation * self._params["sensory_sparsity_mask"]
-        )
+        # weight quantization
+        if self.weight_quantization is not None:
+            w_param = self.ptq_weight_symmetric(w_param, n_bits=self.weight_quantization, name="w")
+            sensory_w_param = self.ptq_weight_symmetric(sensory_w_param, n_bits=self.weight_quantization, name="sensory_w")
+        
+        # inputs CAM quantization
+        if self.CAM_quantization is not None:
+            inputs = self.ptq_weight_symmetric(inputs, n_bits=self.CAM_quantization, name="inputs")
+            
+        # digital fixed_params quantization
+        if self.digital_RRAM_quantization is not None:
+            cm_t = self.ptq_weight_symmetric(cm_t, n_bits= self.digital_RRAM_quantization, name="cm_t")
+            vleak = self.ptq_weight_symmetric(vleak, n_bits= self.digital_RRAM_quantization, name="vleak")
+            gleak = self.ptq_weight_symmetric(gleak, n_bits= self.digital_RRAM_quantization, name="gleak")
+
+        # [LUT] calculate sigmoid activation function for sensory neurons and quantization 
+        activate_inputs = self._sigmoid(inputs, self._params["sensory_mu"], self._params["sensory_sigma"])
+        if self.LUT_quantization is not None:
+            activate_inputs = self.ptq_weight_symmetric(activate_inputs, n_bits=self.LUT_quantization, name="sensory_w_activation")
+
+        # [MVM] We can pre-compute the effects of the sensory neurons here
+        sensory_w_activation = sensory_w_param * activate_inputs
+        sensory_w_activation = (sensory_w_activation * self._params["sensory_sparsity_mask"])
 
         sensory_rev_activation = sensory_w_activation * self._params["sensory_erev"]
 
         # Reduce over dimension 1 (=source sensory neurons)
         w_numerator_sensory = torch.sum(sensory_rev_activation, dim=1)
         w_denominator_sensory = torch.sum(sensory_w_activation, dim=1)
-
-        # cm/t is loop invariant
-        cm_t = self.make_positive_fn(self._params["cm"]) / (
-            elapsed_time / self._ode_unfolds
-        )
-
-        # Unfold the multiply ODE multiple times into one RNN step
-        w_param = self.make_positive_fn(self._params["w"])
-        gleak = self.make_positive_fn(self._params["gleak"])
-        vleak = self._params["vleak"]
-
-        if self.digital_RRAM_quantization is not None:
-            if self.quantize_debug:
-                print(f"[Quantize][RRAM] bits={self.digital_RRAM_quantization} (loop-invariant constants)")
-            cm_t = self.ptq_weight_symmetric(cm_t, n_bits= self.digital_RRAM_quantization, name="cm_t")
-            vleak = self.ptq_weight_symmetric(vleak, n_bits= self.digital_RRAM_quantization, name="vleak")
-            gleak = self.ptq_weight_symmetric(gleak, n_bits= self.digital_RRAM_quantization, name="gleak")
         
         for t in range(self._ode_unfolds):
-            w_activation = w_param * self._sigmoid(
-                v_pre, self._params["mu"], self._params["sigma"]
-            )
+            # [LUT] quantization inside the loop for v_pre
+            if self.LUT_quantization is not None:
+                v_pre = self.ptq_weight_symmetric(v_pre, n_bits=self.LUT_quantization, name=f"v_pre_step{t}")
+            activate_v_pre = self._sigmoid(v_pre, self._params["mu"], self._params["sigma"])
+            if self.LUT_quantization is not None:
+                activate_v_pre = self.ptq_weight_symmetric(activate_v_pre, n_bits=self.LUT_quantization, name=f"w_activation_step{t}")
+            w_activation = w_param * activate_v_pre
 
             if self.digital_SRAM_quantization is not None:
-                v_pre = self.ptq_weight_symmetric(
-                    v_pre,
+                state = self.ptq_weight_symmetric(
+                    state,
                     n_bits=self.digital_SRAM_quantization,
-                    name=(f"v_pre"),
+                    name=(f"state"),
                 )
 
             w_activation = w_activation * self._params["sparsity_mask"]
@@ -282,7 +296,7 @@ class LTCCell(SequenceModule):
             w_numerator = torch.sum(rev_activation, dim=1) + w_numerator_sensory
             w_denominator = torch.sum(w_activation, dim=1) + w_denominator_sensory
 
-            numerator = cm_t * v_pre + gleak * vleak + w_numerator
+            numerator = cm_t * state + gleak * vleak + w_numerator
             denominator = cm_t + gleak + w_denominator
 
             # Avoid dividing by 0

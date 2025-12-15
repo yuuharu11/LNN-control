@@ -564,6 +564,12 @@ def run_trained_agent(args):
                 args.digital_RRAM_quantization is not None or args.digital_SRAM_quantization is not None
             ):
                 ltc_cell.quantize_debug = True
+            if args.CAM_quantization is not None:
+                ltc_cell.CAM_quantization = int(args.CAM_quantization)
+                print(f"[Quantize] CAM_quantization = {ltc_cell.CAM_quantization}")
+            if args.LUT_quantization is not None:
+                ltc_cell.LUT_quantization = int(args.LUT_quantization)
+                print(f"[Quantize] LUT_quantization = {ltc_cell.LUT_quantization}")
     except Exception as e:
         print(f"[Quantize] injection failed: {e}")
     
@@ -596,8 +602,8 @@ def run_trained_agent(args):
     """
 
     # quantization
-    if args.quantization is not None:
-        ptq_weight_symmetric(policy, n_bits=args.quantization, verbose=True)
+    if args.weight_quantization is not None:
+        ptq_weight_symmetric(policy, n_bits=args.weight_quantization, verbose=True)
 
     # read rollout settings
     rollout_num_episodes = args.n_rollouts
@@ -867,24 +873,38 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--quantization",
+        "--weight_quantization",
         type=int,
         default=None,
-        help="(optional) set quantization levels for rollouts",
+        help="(optional) set weight quantization levels for rollouts",
     )
 
     parser.add_argument(
         "--digital_RRAM_quantization",
         type=int,
         default=None,
-        help="(deprecated) use --quantization instead",
+        help="(deprecated) set digital RRAM quantization levels for rollouts",
     )
 
     parser.add_argument(
         "--digital_SRAM_quantization",
         type=int,
         default=None,
-        help="(deprecated) use --quantization instead",
+        help="(deprecated) set digital SRAM quantization levels for rollouts",
+    )
+
+    parser.add_argument(
+        "--CAM_quantization",
+        type=int,
+        default=None,
+        help="(optional) set CAM quantization levels for rollouts",
+    )
+
+    parser.add_argument(
+        "--LUT_quantization",
+        type=int,
+        default=None,
+        help="(optional) set LUT quantization levels for rollouts",
     )
 
     parser.add_argument(
