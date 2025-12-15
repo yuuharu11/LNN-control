@@ -109,6 +109,42 @@ class LTCCell(SequenceModule):
     def sensory_synapse_count(self):
         return np.sum(np.abs(self._wiring.adjacency_matrix))
 
+    @torch.no_grad()
+    def dump_lut_values(self, activations: torch.Tensor, mu: torch.Tensor, sigma: torch.Tensor,
+                        path: str = "/work/tmp/lut/values.json", bins: int = 64, append: bool = True):
+        """
+        activations: シグモイド後の値 (例: activate_v_pre)
+        mu, sigma   : 使用したパラメータ（記録用）
+        """
+        import json, os
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+
+        def stats(x):
+            return {
+                "min": float(x.min()),
+                "max": float(x.max()),
+                "mean": float(x.mean()),
+                "hist": torch.histc(x, bins=bins, min=0.0, max=1.0).cpu().tolist()
+            }
+
+        record = {
+            "mu_minmax": [float(mu.min()), float(mu.max())],
+            "sigma_minmax": [float(sigma.min()), float(sigma.max())],
+            "activations": stats(activations)
+        }
+
+        if append and os.path.exists(path):
+            with open(path, "r") as f:
+                buf = json.load(f)
+            if not isinstance(buf, list):
+                buf = [buf]
+            buf.append(record)
+        else:
+            buf = [record]
+
+        with open(path, "w") as f:
+            json.dump(buf, f, indent=2)
+            
     def ptq_weight_symmetric(self, params, n_bits: int = 8, name: Optional[str] = None):
         """
         Symmetric, per-tensor, fake-quantization.
@@ -279,6 +315,7 @@ class LTCCell(SequenceModule):
             activate_v_pre = self._sigmoid(v_pre, self._params["mu"], self._params["sigma"])
             if self.LUT_quantization is not None:
                 activate_v_pre = self.ptq_weight_symmetric(activate_v_pre, n_bits=self.LUT_quantization, name=f"w_activation_step{t}")
+                self.dump_lut_values(activate_v_pre)
             w_activation = w_param * activate_v_pre
 
             if self.digital_SRAM_quantization is not None:
