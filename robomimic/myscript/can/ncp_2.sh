@@ -3,13 +3,13 @@
 # ===== Multiple Seeds & Datasets & Units Training Script =====
 # NCP モデルを複数の seed、dataset、units で学習します
 
-SEEDS=(2)
+SEEDS=(1 2 3)
 WANDB_PROJECT="robomimic_can"
 DATASETS=(
     "/work/robomimic/datasets/can/ph/low_dim_v15.hdf5"
 )
 # ✅ UNITS パラメータを追加
-UNITS=(512)
+UNITS=(64)
 
 echo "🚀 NCP mixed_memory Training with Multiple Seeds, Datasets & Units"
 echo "   Project: $WANDB_PROJECT"
@@ -40,7 +40,7 @@ for SEED in "${SEEDS[@]}"; do
       
       # ✅ wandb_name と exp_name に UNIT を含める
       WANDB_NAME="ncp_u${UNIT}_seed${SEED}_${DATASET_NAME}"
-      EXP_NAME="can/ncp-pure-best/${DATASET_NAME}/new/unit${UNIT}/seed${SEED}"
+      EXP_NAME="can/ncp-pure-best/${DATASET_NAME}/unit${UNIT}/seed${SEED}"
       
       echo "[$COUNT/$TOTAL] 🌱 Starting: seed=$SEED, dataset=$DATASET_NAME, unit=$UNIT"
       echo "   wandb_name: $WANDB_NAME"
@@ -51,11 +51,9 @@ for SEED in "${SEEDS[@]}"; do
       if python /work/robomimic/robomimic/scripts/train.py \
         --name "$EXP_NAME" \
         --dataset "$DATA_PATH" \
-        --config /work/robomimic/robomimic/exps/my_params/can/ncp_u512.json \
+        --config /work/robomimic/robomimic/exps/my_params/can/ncp_u64.json \
         --num_epochs 500 \
         --seed "$SEED" \
-        --units "$UNIT" \
-        --odeu 1 \
         --wandb_project "$WANDB_PROJECT" \
         --wandb_name "$WANDB_NAME" \
         --wandb; then

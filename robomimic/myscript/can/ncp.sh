@@ -3,7 +3,7 @@
 # ===== Multiple Seeds & Datasets & Units Training Script =====
 # NCP モデルを複数の seed、dataset、units で学習します
 
-SEEDS=(1)
+SEEDS=(1 2 3)
 WANDB_PROJECT="robomimic_can"
 DATASETS=(
     "/work/robomimic/datasets/can/ph/low_dim_v15.hdf5"
@@ -40,7 +40,7 @@ for SEED in "${SEEDS[@]}"; do
       
       # ✅ wandb_name と exp_name に UNIT を含める
       WANDB_NAME="ncp_u${UNIT}_seed${SEED}_${DATASET_NAME}"
-      EXP_NAME="can/ncp-pure-best/${DATASET_NAME}/new/unit${UNIT}/seed${SEED}"
+      EXP_NAME="can/ncp-pure-best/${DATASET_NAME}/unit${UNIT}/odeu3/seed${SEED}"
       
       echo "[$COUNT/$TOTAL] 🌱 Starting: seed=$SEED, dataset=$DATASET_NAME, unit=$UNIT"
       echo "   wandb_name: $WANDB_NAME"
@@ -55,6 +55,7 @@ for SEED in "${SEEDS[@]}"; do
         --num_epochs 1000 \
         --seed "$SEED" \
         --units "$UNIT" \
+        --odeu 3 \
         --wandb_project "$WANDB_PROJECT" \
         --wandb_name "$WANDB_NAME" \
         --wandb; then

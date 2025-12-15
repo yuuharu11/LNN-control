@@ -3,13 +3,13 @@
 # ===== Multiple Seeds & Datasets & Units Training Script =====
 # NCP モデルを複数の seed、dataset、units で学習します
 
-SEEDS=(4 5)
+SEEDS=(1 2 3 4 5)
 WANDB_PROJECT="robomimic_lift"
 DATASETS=(
     "/work/robomimic/datasets/lift/ph/low_dim_v15.hdf5"
 )
 # ✅ UNITS パラメータを追加
-UNITS=(512)
+UNITS=(64)
 
 echo "🚀 NCP mixed_memory Training with Multiple Seeds, Datasets & Units"
 echo "   Project: $WANDB_PROJECT"
@@ -52,7 +52,6 @@ for SEED in "${SEEDS[@]}"; do
         --dataset "$DATA_PATH" \
         --config /work/robomimic/robomimic/exps/my_params/lift/ncp_u${UNIT}.json \
         --num_epochs 500 \
-        --odeu 1 \
         --seed "$SEED" \
         --units "$UNIT" \
         --wandb_project "$WANDB_PROJECT" \

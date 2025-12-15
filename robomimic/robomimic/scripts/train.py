@@ -312,7 +312,7 @@ def train(config, device, resume=False):
             epoch=epoch,
             num_steps=train_num_steps,
             obs_normalization_stats=obs_normalization_stats,
-            noise_std=config.train.noise_std,
+            noise_std=getattr(config.train, "noise_std", 0.0),
         )
         model.on_epoch_end(epoch)
 
@@ -531,7 +531,11 @@ def main(args):
     if args.units is not None:
         config.algo.lnn.units[1]["units"] = args.units
 
-    config.train.noise_std = args.noise_std
+    with config.unlocked():
+        if args.noise_std is not None:    
+            config.train.noise_std = args.noise_std
+        else:
+            config.train.noise_std = 0.0
     
     if args.odeu is not None:
         config.algo.lnn.ode_unfolds = args.odeu
