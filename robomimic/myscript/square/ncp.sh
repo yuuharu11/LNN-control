@@ -9,7 +9,7 @@ DATASETS=(
     "/work/robomimic/datasets/square/ph/low_dim_v15.hdf5"
 )
 # ✅ UNITS パラメータを追加
-UNITS=(256 512)
+UNITS=(64)
 
 echo "🚀 NCP mixed_memory Training with Multiple Seeds, Datasets & Units"
 echo "   Project: $WANDB_PROJECT"
@@ -39,7 +39,7 @@ for SEED in "${SEEDS[@]}"; do
       
       # ✅ wandb_name と exp_name に UNIT を含める
       WANDB_NAME="ncp_u${UNIT}_${DATASET_NAME}_seed${SEED}"
-      EXP_NAME="square/ncp-pure-best/${DATASET_NAME}/unit${UNIT}-new/seed${SEED}"
+      EXP_NAME="square/ncp-pure-best/${DATASET_NAME}/unit${UNIT}/seed${SEED}"
       
       echo "[$COUNT/$TOTAL] 🌱 Starting: seed=$SEED, dataset=$DATASET_NAME, unit=$UNIT"
       echo "   wandb_name: $WANDB_NAME"
