@@ -9,3 +9,4 @@ robomimic/robomimic/original/wandb/
 csv/
 outputs/
 wandb/
+robomimic/quantize_logs/

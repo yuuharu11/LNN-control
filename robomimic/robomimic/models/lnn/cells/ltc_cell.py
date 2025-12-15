@@ -34,6 +34,7 @@ class LTCCell(SequenceModule):
         weight_quantization: Optional[int] = None,
         CAM_quantization: Optional[int] = None,
         LUT_quantization: Optional[int] = None,
+        log_path: Optional[str] = None,
     ):
         """A `Liquid time-constant (LTC) <https://ojs.aaai.org/index.php/AAAI/article/view/16936>`_ cell.
 
@@ -80,10 +81,11 @@ class LTCCell(SequenceModule):
         self._allocate_parameters()
         self.digital_RRAM_quantization = digital_RRAM_quantization
         self.digital_SRAM_quantization = digital_SRAM_quantization
-        self.quantize_debug: bool = False
+        self.quantize_debug: bool = True
         self.weight_quantization = weight_quantization
         self.CAM_quantization = CAM_quantization
         self.LUT_quantization = LUT_quantization
+        self.log_path = log_path
 
     @property
     def state_size(self):
@@ -110,41 +112,53 @@ class LTCCell(SequenceModule):
         return np.sum(np.abs(self._wiring.adjacency_matrix))
 
     @torch.no_grad()
-    def dump_lut_values(self, activations: torch.Tensor, mu: torch.Tensor, sigma: torch.Tensor,
-                        path: str = "/work/tmp/lut/values.json", bins: int = 64, append: bool = True):
-        """
-        activations: シグモイド後の値 (例: activate_v_pre)
-        mu, sigma   : 使用したパラメータ（記録用）
-        """
+    def dump_lut_values(
+        self,
+        activations: torch.Tensor,
+        mu: torch.Tensor,
+        sigma: torch.Tensor,
+        path: Optional[str] = None,
+        bins: int = 64,
+        append: bool = True,
+    ):
         import json, os
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        from json import JSONDecodeError
+        path = path or self.log_path
+        if path is None:
+            return  # 保存先が未指定なら何もしない
 
-        def stats(x):
+        dirpath = os.path.dirname(path)
+        if dirpath:
+            os.makedirs(dirpath, exist_ok=True)
+
+        def stats(x: torch.Tensor):
             return {
                 "min": float(x.min()),
                 "max": float(x.max()),
                 "mean": float(x.mean()),
-                "hist": torch.histc(x, bins=bins, min=0.0, max=1.0).cpu().tolist()
+                "hist": torch.histc(x, bins=bins, min=0.0, max=1.0).cpu().tolist(),
             }
 
         record = {
             "mu_minmax": [float(mu.min()), float(mu.max())],
             "sigma_minmax": [float(sigma.min()), float(sigma.max())],
-            "activations": stats(activations)
+            "activations": stats(activations),
         }
 
+        buf = []
         if append and os.path.exists(path):
-            with open(path, "r") as f:
-                buf = json.load(f)
-            if not isinstance(buf, list):
-                buf = [buf]
-            buf.append(record)
-        else:
-            buf = [record]
+            try:
+                with open(path, "r") as f:
+                    buf = json.load(f)
+                if not isinstance(buf, list):
+                    buf = [buf]
+            except JSONDecodeError:
+                buf = []  # 壊れていたら作り直す
+        buf.append(record)
 
         with open(path, "w") as f:
             json.dump(buf, f, indent=2)
-            
+
     def ptq_weight_symmetric(self, params, n_bits: int = 8, name: Optional[str] = None):
         """
         Symmetric, per-tensor, fake-quantization.
@@ -153,7 +167,6 @@ class LTCCell(SequenceModule):
         qmax = 2 ** (n_bits - 1) - 1
         with torch.no_grad():
             max_val = params.abs().max()
-            # ゼロガード
             if max_val.item() == 0.0:
                 if self.quantize_debug and name is not None:
                     print(f"[Quantize] {name}: max=0 → skip (bits={n_bits})")
@@ -309,13 +322,14 @@ class LTCCell(SequenceModule):
         w_denominator_sensory = torch.sum(sensory_w_activation, dim=1)
         
         for t in range(self._ode_unfolds):
-            # [LUT] quantization inside the loop for v_pre
-            if self.LUT_quantization is not None:
-                v_pre = self.ptq_weight_symmetric(v_pre, n_bits=self.LUT_quantization, name=f"v_pre_step{t}")
+            # [CAM/LUT] quantization inside the loop for v_pre
+            if self.CAM_quantization is not None:
+                v_pre = self.ptq_weight_symmetric(v_pre, n_bits=self.CAM_quantization, name=f"v_pre_step{t}")
             activate_v_pre = self._sigmoid(v_pre, self._params["mu"], self._params["sigma"])
             if self.LUT_quantization is not None:
                 activate_v_pre = self.ptq_weight_symmetric(activate_v_pre, n_bits=self.LUT_quantization, name=f"w_activation_step{t}")
-                self.dump_lut_values(activate_v_pre)
+                if torch.rand(1).item() < 0.001:
+                    self.dump_lut_values(activate_v_pre, self._params["mu"], self._params["sigma"], path=self.log_path, bins=100, append=True)
             w_activation = w_param * activate_v_pre
 
             if self.digital_SRAM_quantization is not None:

@@ -39,9 +39,10 @@ class LTC(SequenceModule):
         transposed,
         digital_RRAM_quantization: Optional[int] = None,
         digital_SRAM_quantization: Optional[int] = None,
-        digital_weight_quantization: Optional[int] = None,
+        weight_quantization: Optional[int] = None,
         CAM_quantization: Optional[int] = None,
         LUT_quantization: Optional[int] = None,
+        log_path: Optional[str] = None,
     ):
         """Applies a `Liquid time-constant (LTC) <https://ojs.aaai.org/index.php/AAAI/article/view/16936>`_ RNN to an input sequence.
 
@@ -118,9 +119,10 @@ class LTC(SequenceModule):
             implicit_param_constraints=implicit_param_constraints,
             digital_RRAM_quantization=digital_RRAM_quantization,
             digital_SRAM_quantization=digital_SRAM_quantization,
-            digital_weight_quantization=digital_weight_quantization,
+            weight_quantization=weight_quantization,
             CAM_quantization=CAM_quantization,
             LUT_quantization=LUT_quantization,
+            log_path=log_path,
         )
         self._wiring = wiring
         self.use_mixed = mixed_memory
