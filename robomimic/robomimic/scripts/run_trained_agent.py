@@ -505,6 +505,9 @@ def run_trained_agent(args):
                 os.makedirs(os.path.dirname(log_path), exist_ok=True)
                 ltc_cell.log_path = log_path
                 print(f"[Quantize] quantize_log_path = {ltc_cell.log_path}")
+            if args.weight_quantization is not None:
+                ltc_cell.weight_quantization = int(args.weight_quantization)
+                print(f"[Quantize] weight_quantization = {ltc_cell.weight_quantization}")
     except Exception as e:
         print(f"[Quantize] injection failed: {e}")
     
