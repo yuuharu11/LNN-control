@@ -9,7 +9,7 @@ DATASETS=(
     "/work/robomimic/datasets/lift/ph/low_dim_v15.hdf5"
 )
 # ✅ UNITS パラメータを追加
-UNITS=(128)
+UNITS=(64)
 
 echo "🚀 NCP mixed_memory Training with Multiple Seeds, Datasets & Units"
 echo "   Project: $WANDB_PROJECT"
