@@ -48,8 +48,8 @@ for name in "${!models[@]}"; do
             --horizon "${HORIZON}" \
             --seed "${SEED}" \
             --dataset_path "${DATASET_PATH}" \
-            --name "${units}_quantized_${quantize}bit" \
             --digital_RRAM_quantization "${quantize}" \
+            --name "${units}_quantized_${quantize}bit" \
             --csv_path "${CSV_BASE}${units}_quantized_${quantize}bit.csv"
 
         echo "Completed: ${name} with ${quantize}-bit quantization"

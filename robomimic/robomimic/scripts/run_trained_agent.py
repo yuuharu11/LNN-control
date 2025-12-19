@@ -481,6 +481,7 @@ def run_trained_agent(args):
     try:
         ltc_cell = policy.policy.nets['policy'].core.rnn_cell
         ltc_cell._make_positive()
+        ltc_cell._weight_calc()
         if ltc_cell is None:
             print("[Quantize] LTCCell not found; skip injection.")
         else:

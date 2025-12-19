@@ -233,63 +233,78 @@ class LTCCell(SequenceModule):
 
         return params
 
-    # for sensory weight quantization
+    # for weight
     @torch.no_grad()
-    def ptq_weight_symmetric_percentile_nonzero(
+    def ptq_weight_nonzero(
         self,
         params: torch.Tensor,
         n_bits: int = 8,
         percentile: float = 0.999,
         name: Optional[str] = None,
+        symmetric: bool = True,
     ):
         """
-        Folding-based symmetric PTQ for sparse, positive-only weights.
-        Zeros are preserved.
+        PTQ for sparse weights.
+        - Only non-zero elements are quantized
+        - Zero is preserved as a dedicated level
+        - symmetric=True  : signed symmetric quantization
+        - symmetric=False : unsigned asymmetric quantization
         """
         assert n_bits >= 2
         if percentile > 1.0:
             percentile /= 100.0
 
-        qmax = 2 ** (n_bits - 1) - 1
-
         with torch.no_grad():
-            nz_mask = params != 0
-            nz = params[nz_mask]
+            x = params.to(torch.float32)
+
+            nz_mask = x != 0
+            nz = x[nz_mask]
 
             if nz.numel() == 0:
                 return params
 
-            # upper-tail percentile clipping
-            max_clip = torch.quantile(nz.to(torch.float32), percentile)
+            # percentile clipping (upper-tail only)
+            max_clip = torch.quantile(nz, percentile)
             nz = torch.clamp(nz, max=max_clip)
 
-            min_val = nz.min()
-            max_val = nz.max()
-            center = 0.5 * (min_val + max_val)
+            if symmetric:
+                # -----------------------------
+                # Symmetric (signed)
+                # -----------------------------
+                qmax = 2 ** (n_bits - 1) - 1
 
-            # folding
-            folded = torch.where(
-                nz <= center,
-                nz - center,
-                -(nz - center),
-            )
+                abs_max = nz.abs().max()
+                if abs_max < 1e-12:
+                    return params
 
-            abs_max = folded.abs().max()
-            if abs_max < 1e-12:
-                return params
+                scale = abs_max / qmax
+                nz_q = torch.round(nz / scale).clamp(-qmax, qmax) * scale
 
-            scale = abs_max / qmax
-            folded_q = torch.round(folded / scale).clamp(-qmax, qmax) * scale
+            else:
+                # -----------------------------
+                # Asymmetric (unsigned)
+                # -----------------------------
+                qmax = 2 ** n_bits - 1
 
-            params_q = params.clone()
-            params_q[nz_mask] = folded_q
-            params.copy_(params_q)
+                min_val = nz.min()
+                max_val = nz.max()
+                if max_val - min_val < 1e-12:
+                    return params
+
+                scale = (max_val - min_val) / qmax
+                nz_q = torch.round((nz - min_val) / scale).clamp(0, qmax) * scale + min_val
+
+            # write back
+            out = x.clone()
+            out[nz_mask] = nz_q
+            params.copy_(out.to(params.dtype))
 
             if getattr(self, "quantize_debug", False) and name:
-                sp = 1.0 - nz.numel() / params.numel()
+                sp = 1.0 - nz.numel() / x.numel()
+                mode = "sym" if symmetric else "asym"
                 print(
-                    f"[Quantize-Fold] {name}: bits={n_bits} "
-                    f"sp={sp*100:.1f}% center={center:.3e} scale={scale:.3e}"
+                    f"[Quantize-NZ-{mode}] {name}: bits={n_bits} "
+                    f"sp={sp*100:.1f}% scale={scale:.3e}"
                 )
 
         return params
@@ -303,14 +318,14 @@ class LTCCell(SequenceModule):
         self.register_parameter(name, param)
         return param
 
-    def add_vacant_weight(self, name, shape, requires_grad=True, persistent=True):
-        param = torch.nn.Parameter(
-            torch.zeros(shape), requires_grad=requires_grad
-        )
-        if persistent:
+    def add_vacant_weight(self, name, shape, requires_grad=False, persistent=True):
+        if requires_grad:
+            param = nn.Parameter(torch.zeros(shape))
             self.register_parameter(name, param)
         else:
-            self.register_buffer(name, param, persistent=False)
+            buf = torch.zeros(shape, device="cuda")
+            self.register_buffer(name, buf, persistent=persistent)
+            param = buf
         return param
 
     def _get_init_value(self, shape, param_name):
@@ -382,10 +397,10 @@ class LTCCell(SequenceModule):
             torch.Tensor(np.abs(self._wiring.sensory_adjacency_matrix)),
             requires_grad=False,
         )
-        self._params["w_mask"] = self.add_vacant_weight("w_mask", self._params["w"].shape, requires_grad=False, persistent=False).to("cuda")
-        self._params["sensory_w_mask"] = self.add_vacant_weight("sensory_w_mask", self._params["sensory_w"].shape, requires_grad=False, persistent=False).to("cuda")
-        self._params["w_rev"] = self.add_vacant_weight("w_rev", self._params["w"].shape, requires_grad=False, persistent=False).to("cuda")
-        self._params["sensory_w_rev"] = self.add_vacant_weight("sensory_w_rev", self._params["sensory_w"].shape, requires_grad=False, persistent=False).to("cuda")
+        self._params["w_mask"] = self.add_vacant_weight("w_mask", self._params["w"].shape, requires_grad=False, persistent=False)
+        self._params["sensory_w_mask"] = self.add_vacant_weight("sensory_w_mask", self._params["sensory_w"].shape, requires_grad=False, persistent=False)
+        self._params["w_rev"] = self.add_vacant_weight("w_rev", self._params["w"].shape, requires_grad=False, persistent=False)
+        self._params["sensory_w_rev"] = self.add_vacant_weight("sensory_w_rev", self._params["sensory_w"].shape, requires_grad=False, persistent=False)
 
         if self._input_mapping in ["affine", "linear"]:
             self._params["input_w"] = self.add_weight(
@@ -417,17 +432,19 @@ class LTCCell(SequenceModule):
             self._params["cm"] = self.digital_ptq(self._params["cm"], n_bits=digital_RRAM_quantization, name="cm", signed=False)
             self._params["vleak"] = self.digital_ptq(self._params["vleak"], n_bits=digital_RRAM_quantization, name="vleak", signed=True)
          
-    def _weight_quantization_step(self, weight_quantization=None):
+    def _weight_calc(self):
         # weight quantization
         self._params["w_mask"].copy_(self._params["w"] * self._params["sparsity_mask"])
         self._params["sensory_w_mask"].copy_(self._params["sensory_w"] * self._params["sensory_sparsity_mask"])
         self._params["w_rev"].copy_(self._params["w_mask"] * self._params["erev"])
         self._params["sensory_w_rev"].copy_(self._params["sensory_w_mask"] * self._params["sensory_erev"])
+        
+    def _weight_quantization(self, weight_quantization=None):
         if weight_quantization is not None:
-            self._params["w_mask"].copy_(self.ptq_weight_symmetric_percentile_nonzero(self._params["w_mask"], n_bits=weight_quantization, name="w"))
-            self._params["sensory_w_mask"].copy_(self.ptq_weight_symmetric_percentile_nonzero(self._params["sensory_w_mask"], n_bits=weight_quantization, name="sensory_w"))
-            self._params["w_rev"].copy_(self.ptq_weight_symmetric_percentile_nonzero(self._params["w_rev"], n_bits=weight_quantization, name="w_rev"))
-            self._params["sensory_w_rev"].copy_(self.ptq_weight_symmetric_percentile_nonzero(self._params["sensory_w_rev"], n_bits=weight_quantization, name="sensory_w_rev"))
+            self._params["w_mask"].copy_(self.ptq_weight_nonzero(self._params["w_mask"], n_bits=weight_quantization, name="w", symmetric=False))
+            self._params["sensory_w_mask"].copy_(self.ptq_weight_nonzero(self._params["sensory_w_mask"], n_bits=weight_quantization, name="sensory_w", symmetric=False))
+            self._params["w_rev"].copy_(self.ptq_weight_nonzero(self._params["w_rev"], n_bits=weight_quantization, name="w_rev", symmetric=True))
+            self._params["sensory_w_rev"].copy_(self.ptq_weight_nonzero(self._params["sensory_w_rev"], n_bits=weight_quantization, name="sensory_w_rev", symmetric=True))
             
     def _sigmoid(self, v_pre, mu, sigma):
         v_pre = torch.unsqueeze(v_pre, -1)  # For broadcasting
@@ -437,8 +454,7 @@ class LTCCell(SequenceModule):
 
     def _ode_solver(self, inputs, state, elapsed_time):
         v_pre = state
-        device = inputs.device
-
+        
         # cm/t is loop invariant
         cm_t = self._params["cm"] / (elapsed_time / self._ode_unfolds)
         # params
@@ -448,7 +464,6 @@ class LTCCell(SequenceModule):
         w_rev = self._params["w_rev"]
         gleak = self._params["gleak"]
         vleak = self._params["vleak"]
-
         # inputs CAM quantization
         if self.CAM_quantization is not None:
             inputs = self.ptq_range(inputs, n_bits=self.CAM_quantization, name="inputs")
