@@ -29,6 +29,12 @@ class LTCCell(SequenceModule):
         ode_unfolds=6,
         epsilon=1e-8,
         implicit_param_constraints=False,
+        digital_RRAM_quantization: Optional[int] = None,
+        digital_SRAM_quantization: Optional[int] = None,
+        weight_quantization: Optional[int] = None,
+        CAM_quantization: Optional[int] = None,
+        LUT_quantization: Optional[int] = None,
+        log_path: Optional[str] = None,
     ):
         """A `Liquid time-constant (LTC) <https://ojs.aaai.org/index.php/AAAI/article/view/16936>`_ cell.
 
@@ -72,8 +78,15 @@ class LTCCell(SequenceModule):
         self._ode_unfolds = ode_unfolds
         self._epsilon = epsilon
         self._clip = torch.nn.ReLU()
+        self.quantize_debug: bool = True
+        self.CAM_quantization = CAM_quantization
+        self.LUT_quantization = LUT_quantization
+        self.digital_RRAM_quantization = digital_RRAM_quantization
+        self.digital_SRAM_quantization = digital_SRAM_quantization
+        self.weight_quantization = weight_quantization
+        self.log_path = log_path
         self._allocate_parameters()
-
+        
     @property
     def state_size(self):
         return self._wiring.units
@@ -98,6 +111,235 @@ class LTCCell(SequenceModule):
     def sensory_synapse_count(self):
         return np.sum(np.abs(self._wiring.adjacency_matrix))
 
+    @torch.no_grad()
+    def dump_lut_values(
+        self,
+        state: torch.Tensor,
+        activations: torch.Tensor,
+        mu: torch.Tensor,
+        sigma: torch.Tensor,
+        path: Optional[str] = None,
+        bins: int = 64,
+        append: bool = True,
+    ):
+        import json, os
+        from json import JSONDecodeError
+        path = path or self.log_path
+        if path is None:
+            return  
+
+        dirpath = os.path.dirname(path)
+        if dirpath:
+            os.makedirs(dirpath, exist_ok=True)
+
+        def stats(x: torch.Tensor):
+            return {
+                "min": float(x.min()),
+                "max": float(x.max()),
+                "mean": float(x.mean()),
+                "hist": torch.histc(x, bins=bins, min=0.0, max=1.0).cpu().tolist(),
+            }
+
+        record = {
+            "mu_minmax": [float(mu.min()), float(mu.max())],
+            "sigma_minmax": [float(sigma.min()), float(sigma.max())],
+            "activations": stats(activations),
+            "states": stats(state),
+        }
+
+        buf = []
+        if append and os.path.exists(path):
+            try:
+                with open(path, "r") as f:
+                    buf = json.load(f)
+                if not isinstance(buf, list):
+                    buf = [buf]
+            except JSONDecodeError:
+                buf = []  # 壊れていたら作り直す
+        buf.append(record)
+
+        with open(path, "w") as f:
+            json.dump(buf, f, indent=2)
+    
+    def make_positive(self):
+        self._params["cm"] = self.make_positive_fn(self._params["cm"])
+        # params
+        self._params["sensory_w"] = self.make_positive_fn(self._params["sensory_w"])
+        self._params["w"] = self.make_positive_fn(self._params["w"])
+        self._params["gleak"] = self.make_positive_fn(self._params["gleak"])
+
+    # quantization function
+    # for cm, vleak, gleak
+    @torch.no_grad()
+    def digital_ptq(
+        self,
+        params: torch.Tensor,
+        n_bits: int = 8,
+        percentile: float = 0.999,
+        name: Optional[str] = None,
+        signed: bool = True,
+    ):
+        """
+        Percentile clipping + (signed / unsigned) digital fake quantization.
+        No centering, no zero-point shift.
+        """
+
+        assert n_bits >= 2, "n_bits must be >= 2"
+
+        if percentile > 1.0:
+            percentile /= 100.0
+
+        x = params.to(torch.float32)
+
+        # --------------------------------------------------
+        # 1. Percentile-based clipping
+        # --------------------------------------------------
+        lower = torch.quantile(x, 1.0 - percentile)
+        upper = torch.quantile(x, percentile)
+
+        if lower.item() == upper.item():
+            return params
+
+        x_clipped = x.clamp(lower, upper)
+
+        # --------------------------------------------------
+        # 2. Quantization mode
+        # --------------------------------------------------
+        if signed:
+            qmax = 2 ** (n_bits - 1) - 1
+            abs_max = x_clipped.abs().max()
+            if abs_max.item() == 0:
+                return params
+            scale = abs_max / qmax
+            x_q = torch.round(x_clipped / scale).clamp(-qmax, qmax) * scale
+        else:
+            qmax = 2 ** n_bits - 1
+            x_clipped = x_clipped.clamp(min=0)
+            max_val = torch.quantile(x_clipped, percentile)
+            if max_val.item() == 0:
+                return params
+            scale = max_val / qmax
+            x_q = torch.round(x_clipped / scale).clamp(0, qmax) * scale
+
+        params.copy_(x_q.to(params.dtype))
+
+        if getattr(self, "quantize_debug", False) and name is not None:
+            mode = "signed" if signed else "unsigned"
+            print(
+                f"[Quantize-{mode}] {name}: bits={n_bits} "
+                f"p{percentile*100:.2f}% scale={scale:.4e}"
+            )
+
+        return params
+
+    # for sensory weight quantization
+    @torch.no_grad()
+    def ptq_weight_symmetric_percentile_nonzero(
+        self,
+        params: torch.Tensor,
+        n_bits: int = 8,
+        percentile: float = 0.999,
+        name: Optional[str] = None,
+    ):
+        """
+        Folding-based symmetric PTQ for sparse, positive-only weights.
+        Zeros are preserved.
+        """
+        assert n_bits >= 2
+        if percentile > 1.0:
+            percentile /= 100.0
+
+        qmax = 2 ** (n_bits - 1) - 1
+
+        with torch.no_grad():
+            nz_mask = params != 0
+            nz = params[nz_mask]
+
+            if nz.numel() == 0:
+                return params
+
+            # upper-tail percentile clipping
+            max_clip = torch.quantile(nz.to(torch.float32), percentile)
+            nz = torch.clamp(nz, max=max_clip)
+
+            min_val = nz.min()
+            max_val = nz.max()
+            center = 0.5 * (min_val + max_val)
+
+            # folding
+            folded = torch.where(
+                nz <= center,
+                nz - center,
+                -(nz - center),
+            )
+
+            abs_max = folded.abs().max()
+            if abs_max < 1e-12:
+                return params
+
+            scale = abs_max / qmax
+            folded_q = torch.round(folded / scale).clamp(-qmax, qmax) * scale
+
+            params_q = params.clone()
+            params_q[nz_mask] = folded_q
+            params.copy_(params_q)
+
+            if getattr(self, "quantize_debug", False) and name:
+                sp = 1.0 - nz.numel() / params.numel()
+                print(
+                    f"[Quantize-Fold] {name}: bits={n_bits} "
+                    f"sp={sp*100:.1f}% center={center:.3e} scale={scale:.3e}"
+                )
+
+        return params
+
+    # for weight quantization
+    @torch.no_grad()
+    def ptq_weight_percentile_nonzero(
+        self, 
+        params: torch.Tensor, 
+        n_bits: int = 8, 
+        percentile: float = 0.999, 
+        name: Optional[str] = None
+    ):
+        """
+        Unsigned Asymmetric Quantization using Percentile Calibration.
+        Suitable for parameters with positive distribution (e.g., sigmoid outputs, time-constants).
+        
+        Range: [0, Percentile_Max] mapped to [0, 2^n_bits - 1]
+        """
+        assert n_bits >= 1, "n_bits must be >= 1"
+        if percentile > 1.0:
+            percentile = percentile / 100.0
+            
+        qmax = 2 ** n_bits - 1
+        qmin = 0
+        
+        with torch.no_grad():
+            if params.min() < 0:
+                if getattr(self, "quantize_debug", False) and name is not None:
+                    print(f"[Quantize Warning] {name} has negative values. Clipping to 0 for Unsigned mode.")
+                params.clamp_(min=0.0)
+
+            max_val = torch.quantile(params.to(torch.float32), percentile)
+            
+            if max_val.item() <= 0.0:
+                max_val = params.max()
+                if max_val.item() <= 0.0:
+                    return params
+
+            scale = max_val / qmax
+            
+            p_q = torch.round(params / scale).clamp(qmin, qmax) * scale
+            
+            params.copy_(p_q)
+            
+            if getattr(self, "quantize_debug", False) and name is not None:
+                print(f"[Quantize Asymmetric] {name}: bits={n_bits} (Unsigned) "
+                    f"p{percentile*100:.1f}_val={max_val.item():.4f} scale={float(scale):.4e}")
+                
+        return params
+    
     def add_weight(self, name, init_value, requires_grad=True):
         param = torch.nn.Parameter(init_value, requires_grad=requires_grad)
         self.register_parameter(name, param)
@@ -195,6 +437,28 @@ class LTCCell(SequenceModule):
                 init_value=torch.zeros((self.motor_size,)),
             )
 
+    # initial quantization 
+    def _quantization(self, digital_RRAM_quantization=None, weight_quantization=None):
+        # make positive
+        # cm, gleak, w, sensory_w
+        self.make_positive()
+        # digital RRAM quantization
+        if digital_RRAM_quantization is not None:
+            self._params["gleak"] = self.digital_ptq(self._params["gleak"], n_bits=digital_RRAM_quantization, name="gleak", signed=False) 
+            self._params["cm"] = self.digital_ptq(self._params["cm"], n_bits=digital_RRAM_quantization, name="cm", signed=False)
+            self._params["vleak"] = self.digital_ptq(self._params["vleak"], n_bits=digital_RRAM_quantization, name="vleak", signed=True)
+         
+        # weight quantization
+        if weight_quantization is not None:
+            self._params["w_mask"] = self._params["w"] * self._params["sparsity_mask"]
+            self._params["sensory_w_mask"] = self._params["sensory_w"] * self._params["sensory_sparsity_mask"]
+            self._params["w_rev"] = self._params["w_mask"] * self._params["erev"]
+            self._params["sensory_w_rev"] = self._params["sensory_w_mask"] * self._params["sensory_erev"]
+            self._params["w_mask"] = self.ptq_weight_symmetric_percentile_nonzero(self._params["w_mask"], n_bits=weight_quantization, name="w")
+            self._params["sensory_w_mask"] = self.ptq_weight_symmetric_percentile_nonzero(self._params["sensory_w_mask"], n_bits=weight_quantization, name="sensory_w")
+            self._params["w_rev"] = self.ptq_weight_percentile_nonzero(self._params["w_rev"], n_bits=weight_quantization, name="w_rev")
+            self._params["sensory_w_rev"] = self.ptq_weight_percentile_nonzero(self._params["sensory_w_rev"], n_bits=weight_quantization, name="sensory_w_rev")
+
     def _sigmoid(self, v_pre, mu, sigma):
         v_pre = torch.unsqueeze(v_pre, -1)  # For broadcasting
         mues = v_pre - mu
@@ -204,49 +468,62 @@ class LTCCell(SequenceModule):
     def _ode_solver(self, inputs, state, elapsed_time):
         v_pre = state
 
-        # We can pre-compute the effects of the sensory neurons here
-        sensory_w_activation = self.make_positive_fn(
-            self._params["sensory_w"]
-        ) * self._sigmoid(
-            inputs, self._params["sensory_mu"], self._params["sensory_sigma"]
-        )
-        sensory_w_activation = (
-            sensory_w_activation * self._params["sensory_sparsity_mask"]
-        )
+        # cm/t is loop invariant
+        cm_t = self._params["cm"] / (elapsed_time / self._ode_unfolds)
+        # params
+        sensory_w_param = self._params["sensory_w_mask"]
+        w_param = self._params["w_mask"]
+        sensory_w_rev = self._params["sensory_w_rev"]
+        w_rev = self._params["w_rev"]
+        gleak = self._params["gleak"]
+        vleak = self._params["vleak"]
 
-        sensory_rev_activation = sensory_w_activation * self._params["sensory_erev"]
+        # inputs CAM quantization
+        if self.CAM_quantization is not None:
+            inputs = self.ptq_symmetric_percentile(inputs, n_bits=self.CAM_quantization, name="inputs")
+        
+        # [LUT] calculate sigmoid activation function for sensory neurons and quantization 
+        activate_inputs = self._sigmoid(inputs, self._params["sensory_mu"], self._params["sensory_sigma"])
+        if self.LUT_quantization is not None:
+            activate_inputs = self.ptq_symmetric_percentile(activate_inputs, n_bits=self.LUT_quantization, name="sensory_w_activation")
+
+        # [MVM] We can pre-compute the effects of the sensory neurons here
+        sensory_w_activation = sensory_w_param * activate_inputs
+
+        sensory_rev_activation = sensory_w_rev * activate_inputs
 
         # Reduce over dimension 1 (=source sensory neurons)
         w_numerator_sensory = torch.sum(sensory_rev_activation, dim=1)
         w_denominator_sensory = torch.sum(sensory_w_activation, dim=1)
-
-        # cm/t is loop invariant
-        cm_t = self.make_positive_fn(self._params["cm"]) / (
-            elapsed_time / self._ode_unfolds
-        )
-
-        # Unfold the multiply ODE multiple times into one RNN step
-        w_param = self.make_positive_fn(self._params["w"])
+        
         for t in range(self._ode_unfolds):
-            w_activation = w_param * self._sigmoid(
-                v_pre, self._params["mu"], self._params["sigma"]
-            )
+            # [CAM/LUT] quantization inside the loop for v_pre
+            if self.CAM_quantization is not None:
+                v_pre = self.ptq_symmetric_percentile(v_pre, n_bits=self.CAM_quantization, name=f"v_pre_step{t}")
+            activate_v_pre = self._sigmoid(v_pre, self._params["mu"], self._params["sigma"])
+            if self.LUT_quantization is not None:
+                activate_v_pre = self.ptq_symmetric_percentile(activate_v_pre, n_bits=self.LUT_quantization, name=f"w_activation_step{t}")
+                # for logging LUT activations distribution
+                if torch.rand(1).item() < 0.001:
+                    self.dump_lut_values(v_pre, activate_v_pre, self._params["mu"], self._params["sigma"], path=self.log_path, bins=100, append=True)
 
-            w_activation = w_activation * self._params["sparsity_mask"]
+            if self.digital_SRAM_quantization is not None:
+                state = self.ptq_symmetric_percentile(state, n_bits=self.digital_SRAM_quantization, name=(f"state"))
 
-            rev_activation = w_activation * self._params["erev"]
+            w_activation = w_param * activate_v_pre
+
+            rev_activation = w_rev * activate_v_pre
 
             # Reduce over dimension 1 (=source neurons)
             w_numerator = torch.sum(rev_activation, dim=1) + w_numerator_sensory
             w_denominator = torch.sum(w_activation, dim=1) + w_denominator_sensory
 
-            gleak = self.make_positive_fn(self._params["gleak"])
-            numerator = cm_t * v_pre + gleak * self._params["vleak"] + w_numerator
+            numerator = cm_t * state + gleak * vleak + w_numerator
             denominator = cm_t + gleak + w_denominator
 
             # Avoid dividing by 0
             v_pre = numerator / (denominator + self._epsilon)
-
+        self.quantize_debug = False  # Reset after one step
         return v_pre
 
     def _map_inputs(self, inputs):

@@ -459,7 +459,6 @@ def rollout(policy, env, horizon, render=False, video_writer=None, video_skip=5,
 
     return stats, traj
 
-
 def run_trained_agent(args):
     # some arg checking
     write_video = (args.video_path is not None)
@@ -484,16 +483,12 @@ def run_trained_agent(args):
         if ltc_cell is None:
             print("[Quantize] LTCCell not found; skip injection.")
         else:
-            if args.digital_RRAM_quantization is not None:
-                ltc_cell.digital_RRAM_quantization = int(args.digital_RRAM_quantization)
-                print(f"[Quantize] digital_RRAM_quantization = {ltc_cell.digital_RRAM_quantization}")
+            if args.digital_RRAM_quantization or args.weight_quantization is not None:
+                print(f"[Quantize] digital_RRAM_quantization = {ltc_cell.digital_RRAM_quantization}, weight_quantization = {ltc_cell.weight_quantization} before injection")
+                ltc_cell._quantization(digital_RRAM_quantization=ltc_cell.digital_RRAM_quantization, weight_quantization=ltc_cell.weight_quantization)      
             if args.digital_SRAM_quantization is not None:
                 ltc_cell.digital_SRAM_quantization = int(args.digital_SRAM_quantization)
                 print(f"[Quantize] digital_SRAM_quantization = {ltc_cell.digital_SRAM_quantization}")
-            if hasattr(ltc_cell, "quantize_debug") and (
-                args.digital_RRAM_quantization is not None or args.digital_SRAM_quantization is not None
-            ):
-                ltc_cell.quantize_debug = True
             if args.CAM_quantization is not None:
                 ltc_cell.CAM_quantization = int(args.CAM_quantization)
                 print(f"[Quantize] CAM_quantization = {ltc_cell.CAM_quantization}")
@@ -505,9 +500,6 @@ def run_trained_agent(args):
                 os.makedirs(os.path.dirname(log_path), exist_ok=True)
                 ltc_cell.log_path = log_path
                 print(f"[Quantize] quantize_log_path = {ltc_cell.log_path}")
-            if args.weight_quantization is not None:
-                ltc_cell.weight_quantization = int(args.weight_quantization)
-                print(f"[Quantize] weight_quantization = {ltc_cell.weight_quantization}")
     except Exception as e:
         print(f"[Quantize] injection failed: {e}")
     

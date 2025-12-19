@@ -83,10 +83,9 @@ class LTCCell(SequenceModule):
         self.LUT_quantization = LUT_quantization
         self.digital_RRAM_quantization = digital_RRAM_quantization
         self.digital_SRAM_quantization = digital_SRAM_quantization
+        self.weight_quantization = weight_quantization
         self.log_path = log_path
         self._allocate_parameters()
-        self._make_positive()
-        self._quantization()
         
     @property
     def state_size(self):
@@ -115,6 +114,7 @@ class LTCCell(SequenceModule):
     @torch.no_grad()
     def dump_lut_values(
         self,
+        state: torch.Tensor,
         activations: torch.Tensor,
         mu: torch.Tensor,
         sigma: torch.Tensor,
@@ -126,7 +126,7 @@ class LTCCell(SequenceModule):
         from json import JSONDecodeError
         path = path or self.log_path
         if path is None:
-            return  # 保存先が未指定なら何もしない
+            return  
 
         dirpath = os.path.dirname(path)
         if dirpath:
@@ -144,6 +144,7 @@ class LTCCell(SequenceModule):
             "mu_minmax": [float(mu.min()), float(mu.max())],
             "sigma_minmax": [float(sigma.min()), float(sigma.max())],
             "activations": stats(activations),
+            "states": stats(state),
         }
 
         buf = []
@@ -170,77 +171,64 @@ class LTCCell(SequenceModule):
     # quantization function
     # for cm, vleak, gleak
     @torch.no_grad()
-    def ptq_symmetric_percentile(
+    def digital_ptq(
         self,
         params: torch.Tensor,
         n_bits: int = 8,
         percentile: float = 0.999,
         name: Optional[str] = None,
+        signed: bool = True,
     ):
         """
-        Percentile clipping → zero-centering → symmetric fake-quantization.
+        Percentile clipping + (signed / unsigned) digital fake quantization.
+        No centering, no zero-point shift.
         """
 
         assert n_bits >= 2, "n_bits must be >= 2"
 
         if percentile > 1.0:
-            percentile = percentile / 100.0
+            percentile /= 100.0
 
-        qmax = 2 ** (n_bits - 1) - 1  # signed symmetric
+        x = params.to(torch.float32)
 
-        with torch.no_grad():
-            x = params.to(torch.float32)
+        # --------------------------------------------------
+        # 1. Percentile-based clipping
+        # --------------------------------------------------
+        lower = torch.quantile(x, 1.0 - percentile)
+        upper = torch.quantile(x, percentile)
 
-            # --------------------------------------------------
-            # 1. Percentile-based clipping (two-sided)
-            # --------------------------------------------------
-            lower = torch.quantile(x, 1.0 - percentile)
-            upper = torch.quantile(x, percentile)
+        if lower.item() == upper.item():
+            return params
 
-            if lower.item() == upper.item():
-                if getattr(self, "quantize_debug", False) and name is not None:
-                    print(f"[Quantize] {name}: degenerate percentile range → skip")
+        x_clipped = x.clamp(lower, upper)
+
+        # --------------------------------------------------
+        # 2. Quantization mode
+        # --------------------------------------------------
+        if signed:
+            qmax = 2 ** (n_bits - 1) - 1
+            abs_max = x_clipped.abs().max()
+            if abs_max.item() == 0:
                 return params
-
-            x_clipped = x.clamp(lower, upper)
-
-            # --------------------------------------------------
-            # 2. Zero-centering using mid-point
-            # --------------------------------------------------
-            center = 0.5 * (x_clipped.min() + x_clipped.max())
-            x_centered = x_clipped - center
-
-            # --------------------------------------------------
-            # 3. Build symmetric range
-            # --------------------------------------------------
-            abs_max = x_centered.abs().max()
-
-            if abs_max.item() == 0.0:
-                if getattr(self, "quantize_debug", False) and name is not None:
-                    print(f"[Quantize] {name}: abs_max=0 → skip (bits={n_bits})")
-                return params
-
             scale = abs_max / qmax
+            x_q = torch.round(x_clipped / scale).clamp(-qmax, qmax) * scale
+        else:
+            qmax = 2 ** n_bits - 1
+            x_clipped = x_clipped.clamp(min=0)
+            max_val = torch.quantile(x_clipped, percentile)
+            if max_val.item() == 0:
+                return params
+            scale = max_val / qmax
+            x_q = torch.round(x_clipped / scale).clamp(0, qmax) * scale
 
-            # --------------------------------------------------
-            # 4. Symmetric fake quantization
-            # --------------------------------------------------
-            x_q = torch.round(x_centered / scale).clamp(-qmax, qmax) * scale
+        params.copy_(x_q.to(params.dtype))
 
-            # shift back
-            x_q = x_q + center
-
-            params.copy_(x_q.to(params.dtype))
-
-            if getattr(self, "quantize_debug", False) and name is not None:
-                print(
-                    f"[Quantize] {name}: bits={n_bits} "
-                    f"percentile={percentile*100:.2f}% "
-                    f"clip=[{lower.item():.4e}, {upper.item():.4e}] "
-                    f"center={center.item():.4e} "
-                    f"scale={scale.item():.4e} "
-                    f"shape={tuple(params.shape)}"
-                )
+        if getattr(self, "quantize_debug", False) and name is not None:
+            mode = "signed" if signed else "unsigned"
+            print(
+                f"[Quantize-{mode}] {name}: bits={n_bits} "
+                f"p{percentile*100:.2f}% scale={scale:.4e}"
+            )
 
         return params
 
@@ -448,30 +436,28 @@ class LTCCell(SequenceModule):
                 name="output_b",
                 init_value=torch.zeros((self.motor_size,)),
             )
-    
-    def _calc_weight_advance(self):
-        # w * mask
-        self._params["w"] = self._params["w"] * self._params["sparsity_mask"]
-        self._params["sensory_w"] = self._params["sensory_w"] * self._params["sensory_sparsity_mask"]
-        self._params["w_rev"] = self._params["w"] * self._params["erev"]
-        self._params["sensory_w_rev"] = self._params["sensory_w"] * self._params["sensory_erev"]
 
     # initial quantization 
-    def _quantization(self):
+    def _quantization(self, digital_RRAM_quantization=None, weight_quantization=None):
+        # make positive
+        # cm, gleak, w, sensory_w
+        self.make_positive()
         # digital RRAM quantization
-        self._params["gleak"] = self.ptq_symmetric_percentile(self._params["gleak"], n_bits=self.digital_RRAM_quantization, name="gleak") 
-        self._params["cm"] = self.ptq_symmetric_percentile(self._params["cm"], n_bits=self.digital_RRAM_quantization, name="cm")
-        self._params["vleak"] = self.ptq_symmetric_percentile(self._params["vleak"], n_bits=self.digital_RRAM_quantization, name="vleak")
+        if digital_RRAM_quantization is not None:
+            self._params["gleak"] = self.digital_ptq(self._params["gleak"], n_bits=digital_RRAM_quantization, name="gleak", signed=False) 
+            self._params["cm"] = self.digital_ptq(self._params["cm"], n_bits=digital_RRAM_quantization, name="cm", signed=False)
+            self._params["vleak"] = self.digital_ptq(self._params["vleak"], n_bits=digital_RRAM_quantization, name="vleak", signed=True)
          
         # weight quantization
-        self._params["w_mask"] = self._params["w"] * self._params["sparsity_mask"]
-        self._params["sensory_w_mask"] = self._params["sensory_w"] * self._params["sensory_sparsity_mask"]
-        self._params["w_rev"] = self._params["w_mask"] * self._params["erev"]
-        self._params["sensory_w_rev"] = self._params["sensory_w_mask"] * self._params["sensory_erev"]
-        self._params["w_mask"] = self.ptq_weight_symmetric_percentile_nonzero(self._params["w_mask"], n_bits=self.weight_quantization, name="w")
-        self._params["sensory_w_mask"] = self.ptq_weight_symmetric_percentile_nonzero(self._params["sensory_w_mask"], n_bits=self.weight_quantization, name="sensory_w")
-        self._params["w_rev"] = self.ptq_weight_percentile_nonzero(self._params["w_rev"], n_bits=self.weight_quantization, name="w_rev")
-        self._params["sensory_w_rev"] = self.ptq_weight_percentile_nonzero(self._params["sensory_w_rev"], n_bits=self.weight_quantization, name="sensory_w_rev")
+        if weight_quantization is not None:
+            self._params["w_mask"] = self._params["w"] * self._params["sparsity_mask"]
+            self._params["sensory_w_mask"] = self._params["sensory_w"] * self._params["sensory_sparsity_mask"]
+            self._params["w_rev"] = self._params["w_mask"] * self._params["erev"]
+            self._params["sensory_w_rev"] = self._params["sensory_w_mask"] * self._params["sensory_erev"]
+            self._params["w_mask"] = self.ptq_weight_symmetric_percentile_nonzero(self._params["w_mask"], n_bits=weight_quantization, name="w")
+            self._params["sensory_w_mask"] = self.ptq_weight_symmetric_percentile_nonzero(self._params["sensory_w_mask"], n_bits=weight_quantization, name="sensory_w")
+            self._params["w_rev"] = self.ptq_weight_percentile_nonzero(self._params["w_rev"], n_bits=weight_quantization, name="w_rev")
+            self._params["sensory_w_rev"] = self.ptq_weight_percentile_nonzero(self._params["sensory_w_rev"], n_bits=weight_quantization, name="sensory_w_rev")
 
     def _sigmoid(self, v_pre, mu, sigma):
         v_pre = torch.unsqueeze(v_pre, -1)  # For broadcasting
@@ -481,6 +467,7 @@ class LTCCell(SequenceModule):
 
     def _ode_solver(self, inputs, state, elapsed_time):
         v_pre = state
+
         # cm/t is loop invariant
         cm_t = self._params["cm"] / (elapsed_time / self._ode_unfolds)
         # params
