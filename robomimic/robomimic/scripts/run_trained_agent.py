@@ -480,12 +480,18 @@ def run_trained_agent(args):
     # inject quantization settings into LTC cell
     try:
         ltc_cell = policy.policy.nets['policy'].core.rnn_cell
+        ltc_cell._make_positive()
         if ltc_cell is None:
             print("[Quantize] LTCCell not found; skip injection.")
         else:
-            if args.digital_RRAM_quantization or args.weight_quantization is not None:
-                print(f"[Quantize] digital_RRAM_quantization = {ltc_cell.digital_RRAM_quantization}, weight_quantization = {ltc_cell.weight_quantization} before injection")
-                ltc_cell._quantization(digital_RRAM_quantization=ltc_cell.digital_RRAM_quantization, weight_quantization=ltc_cell.weight_quantization)      
+            if args.digital_RRAM_quantization is not None:
+                ltc_cell.digital_RRAM_quantization = int(args.digital_RRAM_quantization)
+                print(f"[Quantize] digital_RRAM_quantization = {ltc_cell.digital_RRAM_quantization} before injection")
+                ltc_cell._fixed_quantization(digital_RRAM_quantization=ltc_cell.digital_RRAM_quantization)      
+            if args.weight_quantization is not None:
+                ltc_cell.weight_quantization = int(args.weight_quantization)
+                print(f"[Quantize] weight_quantization = {ltc_cell.weight_quantization}")
+                ltc_cell._weight_quantization(weight_quantization=ltc_cell.weight_quantization)
             if args.digital_SRAM_quantization is not None:
                 ltc_cell.digital_SRAM_quantization = int(args.digital_SRAM_quantization)
                 print(f"[Quantize] digital_SRAM_quantization = {ltc_cell.digital_SRAM_quantization}")

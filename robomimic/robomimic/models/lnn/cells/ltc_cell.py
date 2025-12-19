@@ -161,12 +161,13 @@ class LTCCell(SequenceModule):
         with open(path, "w") as f:
             json.dump(buf, f, indent=2)
     
-    def make_positive(self):
+    def _make_positive(self):
         self._params["cm"] = self.make_positive_fn(self._params["cm"])
         # params
         self._params["sensory_w"] = self.make_positive_fn(self._params["sensory_w"])
         self._params["w"] = self.make_positive_fn(self._params["w"])
         self._params["gleak"] = self.make_positive_fn(self._params["gleak"])
+        print("[Completed] Made cm, sensory_w, w, gleak parameters positive")
 
     # quantization function
     # for cm, vleak, gleak
@@ -293,56 +294,23 @@ class LTCCell(SequenceModule):
 
         return params
 
-    # for weight quantization
     @torch.no_grad()
-    def ptq_weight_percentile_nonzero(
-        self, 
-        params: torch.Tensor, 
-        n_bits: int = 8, 
-        percentile: float = 0.999, 
-        name: Optional[str] = None
-    ):
-        """
-        Unsigned Asymmetric Quantization using Percentile Calibration.
-        Suitable for parameters with positive distribution (e.g., sigmoid outputs, time-constants).
-        
-        Range: [0, Percentile_Max] mapped to [0, 2^n_bits - 1]
-        """
-        assert n_bits >= 1, "n_bits must be >= 1"
-        if percentile > 1.0:
-            percentile = percentile / 100.0
-            
-        qmax = 2 ** n_bits - 1
-        qmin = 0
-        
-        with torch.no_grad():
-            if params.min() < 0:
-                if getattr(self, "quantize_debug", False) and name is not None:
-                    print(f"[Quantize Warning] {name} has negative values. Clipping to 0 for Unsigned mode.")
-                params.clamp_(min=0.0)
-
-            max_val = torch.quantile(params.to(torch.float32), percentile)
-            
-            if max_val.item() <= 0.0:
-                max_val = params.max()
-                if max_val.item() <= 0.0:
-                    return params
-
-            scale = max_val / qmax
-            
-            p_q = torch.round(params / scale).clamp(qmin, qmax) * scale
-            
-            params.copy_(p_q)
-            
-            if getattr(self, "quantize_debug", False) and name is not None:
-                print(f"[Quantize Asymmetric] {name}: bits={n_bits} (Unsigned) "
-                    f"p{percentile*100:.1f}_val={max_val.item():.4f} scale={float(scale):.4e}")
-                
-        return params
+    def ptq_range(self):
+        return
     
     def add_weight(self, name, init_value, requires_grad=True):
         param = torch.nn.Parameter(init_value, requires_grad=requires_grad)
         self.register_parameter(name, param)
+        return param
+
+    def add_vacant_weight(self, name, shape, requires_grad=True, persistent=True):
+        param = torch.nn.Parameter(
+            torch.zeros(shape), requires_grad=requires_grad
+        )
+        if persistent:
+            self.register_parameter(name, param)
+        else:
+            self.register_buffer(name, param, persistent=False)
         return param
 
     def _get_init_value(self, shape, param_name):
@@ -414,6 +382,10 @@ class LTCCell(SequenceModule):
             torch.Tensor(np.abs(self._wiring.sensory_adjacency_matrix)),
             requires_grad=False,
         )
+        self._params["w_mask"] = self.add_vacant_weight("w_mask", self._params["w"].shape, requires_grad=False, persistent=False).to("cuda")
+        self._params["sensory_w_mask"] = self.add_vacant_weight("sensory_w_mask", self._params["sensory_w"].shape, requires_grad=False, persistent=False).to("cuda")
+        self._params["w_rev"] = self.add_vacant_weight("w_rev", self._params["w"].shape, requires_grad=False, persistent=False).to("cuda")
+        self._params["sensory_w_rev"] = self.add_vacant_weight("sensory_w_rev", self._params["sensory_w"].shape, requires_grad=False, persistent=False).to("cuda")
 
         if self._input_mapping in ["affine", "linear"]:
             self._params["input_w"] = self.add_weight(
@@ -438,27 +410,25 @@ class LTCCell(SequenceModule):
             )
 
     # initial quantization 
-    def _quantization(self, digital_RRAM_quantization=None, weight_quantization=None):
-        # make positive
-        # cm, gleak, w, sensory_w
-        self.make_positive()
+    def _fixed_quantization(self, digital_RRAM_quantization=None):
         # digital RRAM quantization
         if digital_RRAM_quantization is not None:
             self._params["gleak"] = self.digital_ptq(self._params["gleak"], n_bits=digital_RRAM_quantization, name="gleak", signed=False) 
             self._params["cm"] = self.digital_ptq(self._params["cm"], n_bits=digital_RRAM_quantization, name="cm", signed=False)
             self._params["vleak"] = self.digital_ptq(self._params["vleak"], n_bits=digital_RRAM_quantization, name="vleak", signed=True)
          
+    def _weight_quantization_step(self, weight_quantization=None):
         # weight quantization
+        self._params["w_mask"].copy_(self._params["w"] * self._params["sparsity_mask"])
+        self._params["sensory_w_mask"].copy_(self._params["sensory_w"] * self._params["sensory_sparsity_mask"])
+        self._params["w_rev"].copy_(self._params["w_mask"] * self._params["erev"])
+        self._params["sensory_w_rev"].copy_(self._params["sensory_w_mask"] * self._params["sensory_erev"])
         if weight_quantization is not None:
-            self._params["w_mask"] = self._params["w"] * self._params["sparsity_mask"]
-            self._params["sensory_w_mask"] = self._params["sensory_w"] * self._params["sensory_sparsity_mask"]
-            self._params["w_rev"] = self._params["w_mask"] * self._params["erev"]
-            self._params["sensory_w_rev"] = self._params["sensory_w_mask"] * self._params["sensory_erev"]
-            self._params["w_mask"] = self.ptq_weight_symmetric_percentile_nonzero(self._params["w_mask"], n_bits=weight_quantization, name="w")
-            self._params["sensory_w_mask"] = self.ptq_weight_symmetric_percentile_nonzero(self._params["sensory_w_mask"], n_bits=weight_quantization, name="sensory_w")
-            self._params["w_rev"] = self.ptq_weight_percentile_nonzero(self._params["w_rev"], n_bits=weight_quantization, name="w_rev")
-            self._params["sensory_w_rev"] = self.ptq_weight_percentile_nonzero(self._params["sensory_w_rev"], n_bits=weight_quantization, name="sensory_w_rev")
-
+            self._params["w_mask"].copy_(self.ptq_weight_symmetric_percentile_nonzero(self._params["w_mask"], n_bits=weight_quantization, name="w"))
+            self._params["sensory_w_mask"].copy_(self.ptq_weight_symmetric_percentile_nonzero(self._params["sensory_w_mask"], n_bits=weight_quantization, name="sensory_w"))
+            self._params["w_rev"].copy_(self.ptq_weight_symmetric_percentile_nonzero(self._params["w_rev"], n_bits=weight_quantization, name="w_rev"))
+            self._params["sensory_w_rev"].copy_(self.ptq_weight_symmetric_percentile_nonzero(self._params["sensory_w_rev"], n_bits=weight_quantization, name="sensory_w_rev"))
+            
     def _sigmoid(self, v_pre, mu, sigma):
         v_pre = torch.unsqueeze(v_pre, -1)  # For broadcasting
         mues = v_pre - mu
@@ -467,6 +437,7 @@ class LTCCell(SequenceModule):
 
     def _ode_solver(self, inputs, state, elapsed_time):
         v_pre = state
+        device = inputs.device
 
         # cm/t is loop invariant
         cm_t = self._params["cm"] / (elapsed_time / self._ode_unfolds)
@@ -480,12 +451,12 @@ class LTCCell(SequenceModule):
 
         # inputs CAM quantization
         if self.CAM_quantization is not None:
-            inputs = self.ptq_symmetric_percentile(inputs, n_bits=self.CAM_quantization, name="inputs")
+            inputs = self.ptq_range(inputs, n_bits=self.CAM_quantization, name="inputs")
         
         # [LUT] calculate sigmoid activation function for sensory neurons and quantization 
         activate_inputs = self._sigmoid(inputs, self._params["sensory_mu"], self._params["sensory_sigma"])
         if self.LUT_quantization is not None:
-            activate_inputs = self.ptq_symmetric_percentile(activate_inputs, n_bits=self.LUT_quantization, name="sensory_w_activation")
+            activate_inputs = self.ptq_range(activate_inputs, n_bits=self.LUT_quantization, name="sensory_w_activation")
 
         # [MVM] We can pre-compute the effects of the sensory neurons here
         sensory_w_activation = sensory_w_param * activate_inputs
@@ -499,16 +470,16 @@ class LTCCell(SequenceModule):
         for t in range(self._ode_unfolds):
             # [CAM/LUT] quantization inside the loop for v_pre
             if self.CAM_quantization is not None:
-                v_pre = self.ptq_symmetric_percentile(v_pre, n_bits=self.CAM_quantization, name=f"v_pre_step{t}")
+                v_pre = self.ptq_range(v_pre, n_bits=self.CAM_quantization, name=f"v_pre_step{t}")
             activate_v_pre = self._sigmoid(v_pre, self._params["mu"], self._params["sigma"])
             if self.LUT_quantization is not None:
-                activate_v_pre = self.ptq_symmetric_percentile(activate_v_pre, n_bits=self.LUT_quantization, name=f"w_activation_step{t}")
+                activate_v_pre = self.ptq_range(activate_v_pre, n_bits=self.LUT_quantization, name=f"w_activation_step{t}")
                 # for logging LUT activations distribution
-                if torch.rand(1).item() < 0.001:
-                    self.dump_lut_values(v_pre, activate_v_pre, self._params["mu"], self._params["sigma"], path=self.log_path, bins=100, append=True)
+            if torch.rand(1).item() < 0.001:
+                self.dump_lut_values(v_pre, activate_v_pre, self._params["mu"], self._params["sigma"], path=self.log_path, bins=100, append=True)
 
             if self.digital_SRAM_quantization is not None:
-                state = self.ptq_symmetric_percentile(state, n_bits=self.digital_SRAM_quantization, name=(f"state"))
+                state = self.ptq_range(state, n_bits=self.digital_SRAM_quantization, name=(f"state"))
 
             w_activation = w_param * activate_v_pre
 
