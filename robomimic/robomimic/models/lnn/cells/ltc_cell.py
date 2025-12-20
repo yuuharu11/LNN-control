@@ -308,10 +308,51 @@ class LTCCell(SequenceModule):
                 )
 
         return params
-
+    
     @torch.no_grad()
-    def ptq_range(self):
-        return
+    def ptq_range(
+        self, 
+        params: torch.Tensor, 
+        n_bits: int = 8, 
+        name: Optional[str] = None,
+        mean_val: float = -0.5,
+        clip_val: float = 1.5,   
+    ):
+        # signed range
+        qmax = 2 ** (n_bits - 1) - 1
+        scale = clip_val / qmax
+
+        # mean shift
+        x = params - mean_val
+
+        # symmetric quantization
+        x_q = torch.round(x / scale).clamp(-qmax, qmax) * scale
+
+        # shift back
+        x_q = x_q + mean_val
+        params.copy_(x_q.to(params.dtype))
+
+        if getattr(self, "quantize_debug", False) and name:
+            print(
+                f"[Quantize] {name}: bits={n_bits}, "
+                f"scale={scale:.3e}, mean={mean_val:.3e}"
+            )
+
+        return params
+
+    # for LUT sigmoid [0,1]
+    @torch.no_grad()
+    def ptq_lut_sigmoid(self, params: torch.Tensor, n_bits: int = 8, name: Optional[str] = None):
+        qmax = 2 ** n_bits - 1
+        scale = 1.0 / qmax
+        nz_q = torch.round(params / scale).clamp(0, qmax) * scale
+        params.copy_(nz_q.to(params.dtype))
+
+        if getattr(self, "quantize_debug", False) and name:
+            print(f"[Quantize] {name}: bits={n_bits}, scale={scale:.3e}")
+
+        return params
+
     
     def add_weight(self, name, init_value, requires_grad=True):
         param = torch.nn.Parameter(init_value, requires_grad=requires_grad)
@@ -466,12 +507,12 @@ class LTCCell(SequenceModule):
         vleak = self._params["vleak"]
         # inputs CAM quantization
         if self.CAM_quantization is not None:
-            inputs = self.ptq_range(inputs, n_bits=self.CAM_quantization, name="inputs")
+            inputs = self.ptq_range(inputs, n_bits=self.CAM_quantization, mean_val=-0.5, clip_val=1.5, name="inputs")
         
         # [LUT] calculate sigmoid activation function for sensory neurons and quantization 
         activate_inputs = self._sigmoid(inputs, self._params["sensory_mu"], self._params["sensory_sigma"])
         if self.LUT_quantization is not None:
-            activate_inputs = self.ptq_range(activate_inputs, n_bits=self.LUT_quantization, name="sensory_w_activation")
+            activate_inputs = self.ptq_lut_sigmoid(activate_inputs, n_bits=self.LUT_quantization, name="sensory_w_activation")
 
         # [MVM] We can pre-compute the effects of the sensory neurons here
         sensory_w_activation = sensory_w_param * activate_inputs
@@ -485,16 +526,16 @@ class LTCCell(SequenceModule):
         for t in range(self._ode_unfolds):
             # [CAM/LUT] quantization inside the loop for v_pre
             if self.CAM_quantization is not None:
-                v_pre = self.ptq_range(v_pre, n_bits=self.CAM_quantization, name=f"v_pre_step{t}")
+                v_pre = self.ptq_range(v_pre, n_bits=self.CAM_quantization, mean_val=-0.5, clip_val=1.5, name=f"v_pre_step{t}")
             activate_v_pre = self._sigmoid(v_pre, self._params["mu"], self._params["sigma"])
             if self.LUT_quantization is not None:
-                activate_v_pre = self.ptq_range(activate_v_pre, n_bits=self.LUT_quantization, name=f"w_activation_step{t}")
+                activate_v_pre = self.ptq_lut_sigmoid(activate_v_pre, n_bits=self.LUT_quantization, name=f"w_activation_step{t}")
                 # for logging LUT activations distribution
             if torch.rand(1).item() < 0.001:
                 self.dump_lut_values(v_pre, activate_v_pre, self._params["mu"], self._params["sigma"], path=self.log_path, bins=100, append=True)
 
             if self.digital_SRAM_quantization is not None:
-                state = self.ptq_range(state, n_bits=self.digital_SRAM_quantization, name=(f"state"))
+                state = self.ptq_range(state, n_bits=self.digital_SRAM_quantization, mean_val=-0.5, clip_val=1.5, name=(f"state"))
 
             w_activation = w_param * activate_v_pre
 
