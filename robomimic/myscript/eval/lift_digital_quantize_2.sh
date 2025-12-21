@@ -6,7 +6,7 @@ N_ROLLOUTS=100
 HORIZON=400
 SEED=0
 QUANTIZES=(8 6 4 3 2)
-CSV_BASE="/work/robomimic/csv/eval/lift/quantize/digital/SRAM"
+CSV_BASE="/work/robomimic/csv/eval/lift/quantize/digital/noclip/"
 mkdir -p ${CSV_BASE}
 
 # name と dataset_path の対応を associative array で定義

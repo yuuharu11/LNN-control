@@ -316,11 +316,16 @@ class LTCCell(SequenceModule):
         n_bits: int = 8, 
         name: Optional[str] = None,
         mean_val: float = -0.5,
-        clip_val: float = 1.5,   
+        clip_val: Optional[float] = None,   
     ):
         # signed range
         qmax = 2 ** (n_bits - 1) - 1
-        scale = clip_val / qmax
+        
+        if clip_val is not None:    
+            scale = clip_val / qmax
+        else:
+            max_abs = torch.max(torch.abs(params - mean_val))
+            scale = max_abs / qmax
 
         # mean shift
         x = params - mean_val
@@ -526,7 +531,7 @@ class LTCCell(SequenceModule):
         for t in range(self._ode_unfolds):
             # [CAM/LUT] quantization inside the loop for v_pre
             if self.CAM_quantization is not None:
-                v_pre = self.ptq_range(v_pre, n_bits=self.CAM_quantization, mean_val=-0.5, clip_val=1.5, name=f"v_pre_step{t}")
+                v_pre = self.ptq_range(v_pre, n_bits=self.CAM_quantization, mean_val=-0.5, name=f"v_pre_step{t}")
             activate_v_pre = self._sigmoid(v_pre, self._params["mu"], self._params["sigma"])
             if self.LUT_quantization is not None:
                 activate_v_pre = self.ptq_lut_sigmoid(activate_v_pre, n_bits=self.LUT_quantization, name=f"w_activation_step{t}")
@@ -535,7 +540,7 @@ class LTCCell(SequenceModule):
                 self.dump_lut_values(v_pre, activate_v_pre, self._params["mu"], self._params["sigma"], path=self.log_path, bins=100, append=True)
 
             if self.digital_SRAM_quantization is not None:
-                state = self.ptq_range(state, n_bits=self.digital_SRAM_quantization, mean_val=-0.5, clip_val=1.5, name=(f"state"))
+                state = self.ptq_range(state, n_bits=self.digital_SRAM_quantization, mean_val=-0.5, name=(f"state"))
 
             w_activation = w_param * activate_v_pre
 
