@@ -6,7 +6,7 @@ N_ROLLOUTS=100
 HORIZON=400
 SEED=0
 QUANTIZES=(8 6 4 3 2)
-CSV_BASE="/work/robomimic/csv/eval/lift/quantize/CAM/noclip/"
+CSV_BASE="/work/robomimic/csv/eval/lift/quantize/CAM/m0c25/"
 mkdir -p ${CSV_BASE}
 
 # name と dataset_path の対応を associative array で定義
@@ -45,6 +45,8 @@ for name in "${!models[@]}"; do
             --dataset_path "${DATASET_PATH}" \
             --name "${units}_quantized_${quantize}bit" \
             --CAM_quantization "${quantize}" \
+            --mean_val 0.0 \
+            --clip_val 2.5 \
             --csv_path "${CSV_BASE}${units}_quantized_${quantize}bit.csv" \
             --log_path "/work/robomimic/quantize_logs/CAM/u${units}_${quantize}bit.json"
 

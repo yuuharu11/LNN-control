@@ -28,6 +28,8 @@ class LTCCell(SequenceModule):
         output_mapping="affine",
         ode_unfolds=6,
         epsilon=1e-8,
+        clip_max: Optional[float] = None,
+        clip_min: Optional[float] = None,
         implicit_param_constraints=False,
         digital_RRAM_quantization: Optional[int] = None,
         digital_SRAM_quantization: Optional[int] = None,
@@ -77,6 +79,8 @@ class LTCCell(SequenceModule):
         self._output_mapping = output_mapping
         self._ode_unfolds = ode_unfolds
         self._epsilon = epsilon
+        self.clip_min = clip_min
+        self.clip_max = clip_max
         self._clip = torch.nn.ReLU()
         self.quantize_debug: bool = True
         self.CAM_quantization = CAM_quantization
@@ -315,32 +319,35 @@ class LTCCell(SequenceModule):
         params: torch.Tensor, 
         n_bits: int = 8, 
         name: Optional[str] = None,
-        mean_val: float = -0.5,
-        clip_val: Optional[float] = None,   
+        clip_min: float = -0.5,
+        clip_max: Optional[float] = 0.5,   
     ):
         # signed range
-        qmax = 2 ** (n_bits - 1) - 1
+        qmax = 2 ** (n_bits) - 1
+
+        x = params.to(torch.float32)
         
-        if clip_val is not None:    
-            scale = clip_val / qmax
+        if clip_min is None:    
+            clip_min_t = x.min()
         else:
-            max_abs = torch.max(torch.abs(params - mean_val))
-            scale = max_abs / qmax
+            clip_min_t = torch.tensor(float(clip_min), device=x.device, dtype=x.dtype)
+        if clip_max is None:
+            clip_max_t = x.max()
+        else:
+            clip_max_t = torch.tensor(float(clip_max), device=x.device, dtype=x.dtype)
+            
+        scale = (clip_max_t - clip_min_t) / qmax
+        
+        x_clipped = x.clamp(min=clip_min_t.item(), max=clip_max_t.item())
+        q = torch.round((x_clipped - clip_min_t) / scale).clamp(0, qmax)
+        x_q = q * scale + clip_min_t
 
-        # mean shift
-        x = params - mean_val
-
-        # symmetric quantization
-        x_q = torch.round(x / scale).clamp(-qmax, qmax) * scale
-
-        # shift back
-        x_q = x_q + mean_val
         params.copy_(x_q.to(params.dtype))
 
         if getattr(self, "quantize_debug", False) and name:
             print(
-                f"[Quantize] {name}: bits={n_bits}, "
-                f"scale={scale:.3e}, mean={mean_val:.3e}"
+                f"[Quantize-minmax] {name}: bits={n_bits}, "
+                f"scale={scale.item():.3e}, clip_min={clip_min_t.item():.3e}, clip_max={clip_max_t.item():.3e}"
             )
 
         return params
@@ -512,7 +519,7 @@ class LTCCell(SequenceModule):
         vleak = self._params["vleak"]
         # inputs CAM quantization
         if self.CAM_quantization is not None:
-            inputs = self.ptq_range(inputs, n_bits=self.CAM_quantization, mean_val=-0.5, clip_val=1.5, name="inputs")
+            inputs = self.ptq_range(inputs, n_bits=self.CAM_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name="inputs")
         
         # [LUT] calculate sigmoid activation function for sensory neurons and quantization 
         activate_inputs = self._sigmoid(inputs, self._params["sensory_mu"], self._params["sensory_sigma"])
@@ -531,16 +538,15 @@ class LTCCell(SequenceModule):
         for t in range(self._ode_unfolds):
             # [CAM/LUT] quantization inside the loop for v_pre
             if self.CAM_quantization is not None:
-                v_pre = self.ptq_range(v_pre, n_bits=self.CAM_quantization, mean_val=-0.5, name=f"v_pre_step{t}")
+                v_pre = self.ptq_range(v_pre, n_bits=self.CAM_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name=f"v_pre_step{t}")
             activate_v_pre = self._sigmoid(v_pre, self._params["mu"], self._params["sigma"])
             if self.LUT_quantization is not None:
                 activate_v_pre = self.ptq_lut_sigmoid(activate_v_pre, n_bits=self.LUT_quantization, name=f"w_activation_step{t}")
                 # for logging LUT activations distribution
-            if torch.rand(1).item() < 0.001:
-                self.dump_lut_values(v_pre, activate_v_pre, self._params["mu"], self._params["sigma"], path=self.log_path, bins=100, append=True)
+            self.dump_lut_values(v_pre, activate_v_pre, self._params["mu"], self._params["sigma"], path=self.log_path, bins=100, append=True)
 
             if self.digital_SRAM_quantization is not None:
-                state = self.ptq_range(state, n_bits=self.digital_SRAM_quantization, mean_val=-0.5, name=(f"state"))
+                state = self.ptq_range(state, n_bits=self.digital_SRAM_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name=(f"state"))
 
             w_activation = w_param * activate_v_pre
 

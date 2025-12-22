@@ -2,7 +2,7 @@
 
 # モデルファイルと共通パラメータ
 DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_3.hdf5"
-N_ROLLOUTS=100
+N_ROLLOUTS=3
 HORIZON=400
 SEED=0
 CSV_PATH="/work/robomimic/csv/eval/lift/ncp-best.csv"
@@ -22,15 +22,15 @@ declare -A models=(
   #["hbc"]="/work/robomimic/bc_trained_models/core/hbc/lift/ph/low_dim/trained_models/core_hbc_lift_ph_low_dim/models/model_epoch_50_low_dim_v15_success_1.0.pth"
   #["iris"]="/work/robomimic/bc_trained_models/core/iris/lift/ph/low_dim/trained_models/core_iris_lift_ph_low_dim/models/model_epoch_50_low_dim_v15_success_1.0.pth"
   ["ncp_u64_best_seed1"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit64/seed1/models/model_epoch_250_low_dim_v15_success_1.0.pth"
-  ["ncp_u64_best_seed2"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit64/seed2/models/model_epoch_150_low_dim_v15_success_0.96.pth"
-  ["ncp_u64_best_seed3"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit64/seed3/models/model_epoch_350_low_dim_v15_success_1.0.pth"
-  #["ncp_u128_best_seed1"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit128/seed1/models/model_epoch_100_low_dim_v15_success_1.0.pth"
+  #["ncp_u64_best_seed2"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit64/seed2/models/model_epoch_150_low_dim_v15_success_0.96.pth"
+  #["ncp_u64_best_seed3"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit64/seed3/models/model_epoch_350_low_dim_v15_success_1.0.pth"
+  ["ncp_u128_best_seed1"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit128/seed1/models/model_epoch_100_low_dim_v15_success_1.0.pth"
   #["ncp_u128_best_seed2"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit128/seed2/models/model_epoch_450_low_dim_v15_success_1.0.pth"
   #["ncp_u128_best_seed3"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit128/seed3/models/model_epoch_150_low_dim_v15_success_1.0.pth"
-  #["ncp_u256_best_seed1"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed1/models/model_epoch_150_low_dim_v15_success_1.0.pth"
+  ["ncp_u256_best_seed1"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed1/models/model_epoch_150_low_dim_v15_success_1.0.pth"
   #["ncp_u256_best_seed2"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed2/models/model_epoch_50_low_dim_v15_success_1.0.pth"
   #["ncp_u256_best_seed3"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed3/models/model_epoch_150_low_dim_v15_success_1.0.pth"
-  #["ncp_u512_best_seed1"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit512/seed1/models/model_epoch_50_low_dim_v15_success_1.0.pth"
+  ["ncp_u512_best_seed1"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit512/seed1/models/model_epoch_50_low_dim_v15_success_1.0.pth"
   #["ncp_u512_best_seed2"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit512/seed2/models/model_epoch_50_low_dim_v15_success_1.0.pth"
   #["ncp_u512_best_seed3"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit512/seed3/models/model_epoch_150_low_dim_v15_success_1.0.pth"
 )
@@ -47,7 +47,8 @@ for name in "${!models[@]}"; do
         --seed "${SEED}" \
         --dataset_path "${DATASET_PATH}" \
         --name "${name}" \
-        --csv_path "${CSV_PATH}"
+        --csv_path "${CSV_PATH}" \
+        --log_path "/work/robomimic/quantize_logs/base.json"
 
     echo "Completed: ${name}"
     echo "----------------------------------------"

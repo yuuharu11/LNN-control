@@ -502,6 +502,12 @@ def run_trained_agent(args):
             if args.LUT_quantization is not None:
                 ltc_cell.LUT_quantization = int(args.LUT_quantization)
                 print(f"[Quantize] LUT_quantization = {ltc_cell.LUT_quantization}")
+            if args.clip_min is not None:
+                ltc_cell.clip_min = float(args.clip_min)
+                print(f"[Quantize] clip_min = {ltc_cell.clip_min}")
+            if args.clip_max is not None:
+                ltc_cell.clip_max = float(args.clip_max)
+                print(f"[Quantize] clip_max = {ltc_cell.clip_max}")
             if args.log_path is not None:
                 log_path = args.log_path
                 os.makedirs(os.path.dirname(log_path), exist_ok=True)
@@ -837,6 +843,26 @@ if __name__ == "__main__":
         type=int,
         default=None,
         help="(optional) set LUT quantization levels for rollouts",
+    )
+
+    parser.add_argument(
+        "--clip_min",
+        type=float,
+        default=None,
+        help="(optional) set minimum clip value for fixed quantization during rollouts",
+    )
+
+    parser.add_argument(
+        "--clip_max",
+        type=float,
+        default=None,
+        help="(optional) set maximum clip value for fixed quantization during rollouts",
+    )
+    parser.add_argument(
+        "--mean_val",
+        type=float,
+        default=-0.5,
+        help="(optional) set mean value for fixed quantization during rollouts",
     )
 
     parser.add_argument(
