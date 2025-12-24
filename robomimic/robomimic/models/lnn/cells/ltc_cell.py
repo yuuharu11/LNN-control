@@ -36,6 +36,7 @@ class LTCCell(SequenceModule):
         weight_quantization: Optional[int] = None,
         CAM_quantization: Optional[int] = None,
         LUT_quantization: Optional[int] = None,
+        calibration_path: Optional[str] = None,
         log_path: Optional[str] = None,
     ):
         """A `Liquid time-constant (LTC) <https://ojs.aaai.org/index.php/AAAI/article/view/16936>`_ cell.
@@ -88,7 +89,7 @@ class LTCCell(SequenceModule):
         self.digital_RRAM_quantization = digital_RRAM_quantization
         self.digital_SRAM_quantization = digital_SRAM_quantization
         self.weight_quantization = weight_quantization
-        self.log_path = log_path
+        self.calibration_path = calibration_path
         self._allocate_parameters()
         
     @property
@@ -120,15 +121,12 @@ class LTCCell(SequenceModule):
         self,
         state: torch.Tensor,
         activations: torch.Tensor,
-        mu: torch.Tensor,
-        sigma: torch.Tensor,
         path: Optional[str] = None,
-        bins: int = 64,
+        bins: int = 100,
         append: bool = True,
     ):
         import json, os
         from json import JSONDecodeError
-        path = path or self.log_path
         if path is None:
             return  
 
@@ -145,8 +143,6 @@ class LTCCell(SequenceModule):
             }
 
         record = {
-            "mu_minmax": [float(mu.min()), float(mu.max())],
-            "sigma_minmax": [float(sigma.min()), float(sigma.max())],
             "activations": stats(activations),
             "states": stats(state),
         }
@@ -159,7 +155,7 @@ class LTCCell(SequenceModule):
                 if not isinstance(buf, list):
                     buf = [buf]
             except JSONDecodeError:
-                buf = []  # 壊れていたら作り直す
+                buf = [] 
         buf.append(record)
 
         with open(path, "w") as f:
@@ -543,7 +539,8 @@ class LTCCell(SequenceModule):
             if self.LUT_quantization is not None:
                 activate_v_pre = self.ptq_lut_sigmoid(activate_v_pre, n_bits=self.LUT_quantization, name=f"w_activation_step{t}")
                 # for logging LUT activations distribution
-            self.dump_lut_values(v_pre, activate_v_pre, self._params["mu"], self._params["sigma"], path=self.log_path, bins=100, append=True)
+            if self.calibration_path is not None:
+                self.dump_lut_values(v_pre, activate_v_pre, path=self.calibration_path, bins=100, append=True)
 
             if self.digital_SRAM_quantization is not None:
                 state = self.ptq_range(state, n_bits=self.digital_SRAM_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name=(f"state"))

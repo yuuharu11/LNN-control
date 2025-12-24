@@ -72,6 +72,7 @@ import robomimic.utils.obs_utils as ObsUtils
 from robomimic.envs.env_base import EnvBase
 from robomimic.envs.wrappers import EnvWrapper
 from robomimic.algo import RolloutPolicy
+from typing import Optional
 
 class PerformanceMonitor:
     """ monitor gpu/CPU memory usage and time taken for rollouts """
@@ -297,6 +298,99 @@ def add_observation_noise(obs, noise_std):
     """
     return noisy_obs
 
+def load_calibration(
+    json_path,
+    key="states",
+    percentile=99.9,
+):
+    with open(json_path, "r") as f:
+        data = json.load(f)
+
+    lo_p = (100.0 - percentile) / 2.0
+    hi_p = 100.0 - lo_p
+
+    mins, maxs = [], []
+    hists = []
+    edges = None
+
+    for d in data:
+        if key not in d:
+            continue
+        entry = d[key]
+
+        if "min" in entry and "max" in entry:
+            mins.append(entry["min"])
+            maxs.append(entry["max"])
+
+        if "hist" in entry and "edges" in entry:
+            hist = np.asarray(entry["hist"], dtype=np.float64)
+            e = np.asarray(entry["edges"], dtype=np.float64)
+
+            if edges is None:
+                edges = e
+            elif len(edges) != len(e) or not np.allclose(edges, e):
+                raise ValueError("edges mismatch between entries")
+
+            hists.append(hist)
+
+    # --- hist がある場合（本来の処理） ---
+    if hists:
+        mass = np.sum(np.stack(hists, axis=0), axis=0)
+        total = mass.sum()
+        if total <= 0:
+            raise ValueError("hist mass is zero")
+
+        cdf = np.cumsum(mass) / total * 100.0
+        cdf_edges = np.concatenate([[0.0], cdf])
+
+        x_lo = float(np.interp(lo_p, cdf_edges, edges))
+        x_hi = float(np.interp(hi_p, cdf_edges, edges))
+
+    # --- hist が無い場合（min/max 近似） ---
+    else:
+        if not mins:
+            raise ValueError(f"{key} has neither hist nor min/max")
+
+        vmin = float(min(mins))
+        vmax = float(max(maxs))
+
+        # 一様分布仮定（最低限の percentile clipping）
+        x_lo = vmin + (vmax - vmin) * lo_p / 100.0
+        x_hi = vmin + (vmax - vmin) * hi_p / 100.0
+
+    print(
+        f"[{key}] "
+        f"percentile {lo_p:.2f}–{hi_p:.2f}% → "
+        f"x_lo={x_lo:.6f}, x_hi={x_hi:.6f}"
+    )
+
+    return x_lo, x_hi
+
+def calibrate_states_observation(policy, env, rollout_horizon, args, write_dataset, video_writer, device, obs_keys, calibration_times, calibration_path, percentile):
+    """ Calibrate observation states for quantization """
+    for i in range(calibration_times):
+        rollout(
+            policy=policy, 
+            env=env, 
+            horizon=rollout_horizon, 
+            render=args.render, 
+            video_writer=video_writer, 
+            video_skip=args.video_skip, 
+            return_obs=(write_dataset and args.dataset_obs),
+            camera_names=args.camera_names,
+            performance_monitor=PerformanceMonitor(device=device),
+            obs_keys=obs_keys,
+            lnn_record=args.lnn_record,
+            observation_noise=args.observation_noise,
+        )
+        
+    x_lo, x_hi = load_calibration(
+        json_path=calibration_path,
+        key="states",
+        percentile=percentile,
+    )
+
+    return x_lo, x_hi 
 
 def rollout(policy, env, horizon, render=False, video_writer=None, video_skip=5, return_obs=False, camera_names=None, 
             performance_monitor=None, obs_keys=None, lnn_record=False, observation_noise=None):
@@ -477,48 +571,6 @@ def run_trained_agent(args):
     # restore policy
     policy, ckpt_dict = FileUtils.policy_from_checkpoint(ckpt_path=ckpt_path, device=device, verbose=True)
 
-    # inject quantization settings into LTC cell
-    try:
-        ltc_cell = policy.policy.nets['policy'].core.rnn_cell
-        ltc_cell._make_positive()
-        ltc_cell._weight_calc()
-        if ltc_cell is None:
-            print("[Quantize] LTCCell not found; skip injection.")
-        else:
-            if args.digital_RRAM_quantization is not None:
-                ltc_cell.digital_RRAM_quantization = int(args.digital_RRAM_quantization)
-                print(f"[Quantize] digital_RRAM_quantization = {ltc_cell.digital_RRAM_quantization} before injection")
-                ltc_cell._fixed_quantization(digital_RRAM_quantization=ltc_cell.digital_RRAM_quantization)      
-            if args.weight_quantization is not None:
-                ltc_cell.weight_quantization = int(args.weight_quantization)
-                print(f"[Quantize] weight_quantization = {ltc_cell.weight_quantization}")
-                ltc_cell._weight_quantization(weight_quantization=ltc_cell.weight_quantization)
-            if args.digital_SRAM_quantization is not None:
-                ltc_cell.digital_SRAM_quantization = int(args.digital_SRAM_quantization)
-                print(f"[Quantize] digital_SRAM_quantization = {ltc_cell.digital_SRAM_quantization}")
-            if args.CAM_quantization is not None:
-                ltc_cell.CAM_quantization = int(args.CAM_quantization)
-                print(f"[Quantize] CAM_quantization = {ltc_cell.CAM_quantization}")
-            if args.LUT_quantization is not None:
-                ltc_cell.LUT_quantization = int(args.LUT_quantization)
-                print(f"[Quantize] LUT_quantization = {ltc_cell.LUT_quantization}")
-            if args.clip_min is not None:
-                ltc_cell.clip_min = float(args.clip_min)
-                print(f"[Quantize] clip_min = {ltc_cell.clip_min}")
-            if args.clip_max is not None:
-                ltc_cell.clip_max = float(args.clip_max)
-                print(f"[Quantize] clip_max = {ltc_cell.clip_max}")
-            if args.log_path is not None:
-                log_path = args.log_path
-                os.makedirs(os.path.dirname(log_path), exist_ok=True)
-                ltc_cell.log_path = log_path
-                print(f"[Quantize] quantize_log_path = {ltc_cell.log_path}")
-    except Exception as e:
-        print(f"[Quantize] injection failed: {e}")
-    
-    for name, p in ltc_cell.named_parameters():
-        print(name, p.shape)
-
     """
     try:
         with torch.no_grad():
@@ -620,6 +672,66 @@ def run_trained_agent(args):
         data_writer = h5py.File(args.dataset_path, "w")
         data_grp = data_writer.create_group("data")
         total_samples = 0
+
+    # Initialize LTC cell for quantization
+    ltc_cell = policy.policy.nets['policy'].core.rnn_cell
+    ltc_cell._make_positive()
+    ltc_cell._weight_calc()
+    if ltc_cell is None:
+        print("[Quantize] LTCCell not found; skip injection.")
+
+    clip_lo = clip_hi = None
+    # if needed, calibrate states observation for quantization
+    if args.calibration_times > 0:
+        ltc_cell.calibration_path = args.calibration_path
+        print(f"[Calibrate] Calibrating states observation for {args.calibration_times} rollouts...")
+        clip_lo, clip_hi = calibrate_states_observation(
+            policy=policy,
+            env=env,
+            rollout_horizon=rollout_horizon,
+            args=args,
+            write_dataset=write_dataset,
+            video_writer=video_writer,
+            device=device,
+            obs_keys=obs_keys,
+            calibration_times=args.calibration_times,
+            calibration_path=args.calibration_path,
+            percentile=args.calibration_percentile,
+        )
+        print(f"[Calibrate] Using calibration data from: {args.calibration_path}")
+        ltc_cell.calibration_path = None
+
+    # inject quantization settings into LTC cell
+    try:
+        if ltc_cell is not None:
+            if args.digital_RRAM_quantization is not None:
+                ltc_cell.digital_RRAM_quantization = int(args.digital_RRAM_quantization)
+                print(f"[Quantize] digital_RRAM_quantization = {ltc_cell.digital_RRAM_quantization} before injection")
+                ltc_cell._fixed_quantization(digital_RRAM_quantization=ltc_cell.digital_RRAM_quantization)      
+            if args.weight_quantization is not None:
+                ltc_cell.weight_quantization = int(args.weight_quantization)
+                print(f"[Quantize] weight_quantization = {ltc_cell.weight_quantization}")
+                ltc_cell._weight_quantization(weight_quantization=ltc_cell.weight_quantization)
+            if args.digital_SRAM_quantization is not None:
+                ltc_cell.digital_SRAM_quantization = int(args.digital_SRAM_quantization)
+                print(f"[Quantize] digital_SRAM_quantization = {ltc_cell.digital_SRAM_quantization}")
+            if args.CAM_quantization is not None:
+                ltc_cell.CAM_quantization = int(args.CAM_quantization)
+                print(f"[Quantize] CAM_quantization = {ltc_cell.CAM_quantization}")
+            if args.LUT_quantization is not None:
+                ltc_cell.LUT_quantization = int(args.LUT_quantization)
+                print(f"[Quantize] LUT_quantization = {ltc_cell.LUT_quantization}")
+            if clip_lo is not None:
+                ltc_cell.clip_min = float(clip_lo)
+                print(f"[Quantize] clip_min = {ltc_cell.clip_min}")
+            if clip_hi is not None:
+                ltc_cell.clip_max = float(clip_hi)
+                print(f"[Quantize] clip_max = {ltc_cell.clip_max}")
+    except Exception as e:
+        print(f"[Quantize] injection failed: {e}")
+    
+    for name, p in ltc_cell.named_parameters():
+        print(name, p.shape)
 
     rollout_stats = []
     for i in range(rollout_num_episodes):
@@ -846,19 +958,6 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--clip_min",
-        type=float,
-        default=None,
-        help="(optional) set minimum clip value for fixed quantization during rollouts",
-    )
-
-    parser.add_argument(
-        "--clip_max",
-        type=float,
-        default=None,
-        help="(optional) set maximum clip value for fixed quantization during rollouts",
-    )
-    parser.add_argument(
         "--mean_val",
         type=float,
         default=-0.5,
@@ -873,17 +972,31 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--calibration_times",
+        type=int,
+        default=0,
+        help="Number of calibration times for quantization during rollouts.",
+    )
+
+    parser.add_argument(
+        "--calibration_path",
+        type=str,
+        default="/work/robomimic/logs/calibration_stats/tmp.json",
+        help="Path to calibration statistics json file.",
+    )
+
+    parser.add_argument(
+        "--calibration_percentile",
+        type=float,
+        default=99.0,
+        help="Percentile for calibration clip range computation.",
+    )
+
+    parser.add_argument(
         "--observation_noise",
         type=float,
         default=None,
         help="If provided, add Gaussian noise with this stddev to observations during rollout.",
-    )
-
-    parser.add_argument(
-        "--log_path", 
-        type=str,
-        default=None, 
-        help="(optional) path to save logs",
     )
 
     args = parser.parse_args()
