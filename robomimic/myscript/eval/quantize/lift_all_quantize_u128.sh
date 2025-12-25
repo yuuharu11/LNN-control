@@ -5,7 +5,7 @@ DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_3.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
 SEED=0
-high_quantize=(6 4)
+high_quantize=(6)
 low_quantize=(4 3 2)
 CSV_BASE="/work/robomimic/csv/eval/lift/quantize/all/"
 LOG_PATH="/work/robomimic/logs/quantize/all/calibration/u128"
@@ -26,6 +26,7 @@ for name in "${!models[@]}"; do
   # unitsの抽出
   units=$(echo "${model_path}" | grep -o 'unit[0-9]\+')
   units=${units:-unit_unknown}
+  seed=${name##*_seed}
     for high_quantize in "${high_quantize[@]}"; do
         for low_quantize in "${low_quantize[@]}"; do
           echo "Running inference for ${name} with ${high_quantize}-bit ${low_quantize}-bit quantization..."

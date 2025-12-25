@@ -368,27 +368,36 @@ def load_calibration(
 
 def calibrate_states_observation(policy, env, rollout_horizon, args, write_dataset, video_writer, device, obs_keys, calibration_times, calibration_path, percentile):
     """ Calibrate observation states for quantization """
-    for i in range(calibration_times):
-        rollout(
-            policy=policy, 
-            env=env, 
-            horizon=rollout_horizon, 
-            render=args.render, 
-            video_writer=video_writer, 
-            video_skip=args.video_skip, 
-            return_obs=(write_dataset and args.dataset_obs),
-            camera_names=args.camera_names,
-            performance_monitor=PerformanceMonitor(device=device),
-            obs_keys=obs_keys,
-            lnn_record=args.lnn_record,
-            observation_noise=args.observation_noise,
+    if os.path.exists(calibration_path):
+        print(f"[Calibrate] Calibration file already exists at: {calibration_path}")
+        x_lo, x_hi = load_calibration(
+            json_path=calibration_path,
+            key="states",
+            percentile=percentile,
         )
-        
-    x_lo, x_hi = load_calibration(
-        json_path=calibration_path,
-        key="states",
-        percentile=percentile,
-    )
+        return x_lo, x_hi
+    else:
+        for i in range(calibration_times):
+            rollout(
+                policy=policy, 
+                env=env, 
+                horizon=rollout_horizon, 
+                render=args.render, 
+                video_writer=video_writer, 
+                video_skip=args.video_skip, 
+                return_obs=(write_dataset and args.dataset_obs),
+                camera_names=args.camera_names,
+                performance_monitor=PerformanceMonitor(device=device),
+                obs_keys=obs_keys,
+                lnn_record=args.lnn_record,
+                observation_noise=args.observation_noise,
+            )
+            
+        x_lo, x_hi = load_calibration(
+            json_path=calibration_path,
+            key="states",
+            percentile=percentile,
+        )
 
     return x_lo, x_hi 
 
