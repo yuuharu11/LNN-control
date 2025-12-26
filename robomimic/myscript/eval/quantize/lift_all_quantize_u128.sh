@@ -7,8 +7,8 @@ HORIZON=400
 SEED=0
 high_quantize=(6)
 low_quantize=(4)
-CSV_BASE="/work/robomimic/csv/eval/lift/quantize/all/"
-LOG_PATH="/work/robomimic/logs/quantize/all/calibration/u128"
+CSV_BASE="/work/robomimic/csv/eval/lift/quantize/best/"
+LOG_PATH="/work/robomimic/logs/quantize/best/calibration/u128"
 mkdir -p ${CSV_BASE}
 
 # name と dataset_path の対応を associative array で定義
@@ -45,6 +45,8 @@ for name in "${!models[@]}"; do
               --weight_quantization "${high_quantize}" \
               --LUT_quantization "${low_quantize}" \
               --CAM_quantization "${high_quantize}" \
+              --ADC_quantization 8 \
+              --DAC_quantization 8 \
               --csv_path "${CSV_BASE}${units}_quantized_${high_quantize}-${low_quantize}.csv" 
 
           echo "Completed: ${name} with ${quantize}-bit quantization"

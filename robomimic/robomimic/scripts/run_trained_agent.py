@@ -375,7 +375,17 @@ def calibrate_states_observation(policy, env, rollout_horizon, args, write_datas
             key="states",
             percentile=percentile,
         )
-        return x_lo, x_hi
+        rev_sum_lo, rev_sum_hi = load_calibration(
+            json_path=calibration_path,
+            key="numerator",
+            percentile=percentile,
+        )
+        w_sum_lo, w_sum_hi = load_calibration(
+            json_path=calibration_path,
+            key="denominator",
+            percentile=percentile,
+        )
+        return x_lo, x_hi, rev_sum_lo, rev_sum_hi, w_sum_lo, w_sum_hi
     else:
         for i in range(calibration_times):
             rollout(
@@ -398,8 +408,18 @@ def calibrate_states_observation(policy, env, rollout_horizon, args, write_datas
             key="states",
             percentile=percentile,
         )
+        rev_sum_lo, rev_sum_hi = load_calibration(
+            json_path=calibration_path,
+            key="numerator",
+            percentile=percentile,
+        )
+        w_sum_lo, w_sum_hi = load_calibration(
+            json_path=calibration_path,
+            key="denominator",
+            percentile=percentile,
+        )
 
-    return x_lo, x_hi 
+    return x_lo, x_hi, rev_sum_lo, rev_sum_hi, w_sum_lo, w_sum_hi
 
 def rollout(policy, env, horizon, render=False, video_writer=None, video_skip=5, return_obs=False, camera_names=None, 
             performance_monitor=None, obs_keys=None, lnn_record=False, observation_noise=None):
@@ -689,12 +709,12 @@ def run_trained_agent(args):
     if ltc_cell is None:
         print("[Quantize] LTCCell not found; skip injection.")
 
-    clip_lo = clip_hi = None
+    clip_lo = clip_hi = clip_w_sum_lo = clip_w_sum_hi = clip_rev_sum_lo = clip_rev_sum_hi = None
     # if needed, calibrate states observation for quantization
     if args.calibration_times > 0:
         ltc_cell.calibration_path = args.calibration_path
         print(f"[Calibrate] Calibrating states observation for {args.calibration_times} rollouts...")
-        clip_lo, clip_hi = calibrate_states_observation(
+        clip_lo, clip_hi, clip_rev_sum_lo, clip_rev_sum_hi, clip_w_sum_lo, clip_w_sum_hi = calibrate_states_observation(
             policy=policy,
             env=env,
             rollout_horizon=rollout_horizon,
@@ -720,7 +740,7 @@ def run_trained_agent(args):
             if args.weight_quantization is not None:
                 ltc_cell.weight_quantization = int(args.weight_quantization)
                 print(f"[Quantize] weight_quantization = {ltc_cell.weight_quantization}")
-                ltc_cell._weight_quantization(weight_quantization=ltc_cell.weight_quantization)
+                ltc_cell._weight_quantization(weight_quantization=ltc_cell.weight_quantization, gaussian=args.gaussian)
             if args.digital_SRAM_quantization is not None:
                 ltc_cell.digital_SRAM_quantization = int(args.digital_SRAM_quantization)
                 print(f"[Quantize] digital_SRAM_quantization = {ltc_cell.digital_SRAM_quantization}")
@@ -730,12 +750,30 @@ def run_trained_agent(args):
             if args.LUT_quantization is not None:
                 ltc_cell.LUT_quantization = int(args.LUT_quantization)
                 print(f"[Quantize] LUT_quantization = {ltc_cell.LUT_quantization}")
+            if args.DAC_quantization is not None:
+                ltc_cell.DAC_quantization = int(args.DAC_quantization)
+                print(f"[Quantize] DAC_quantization = {ltc_cell.DAC_quantization}")
+            if args.ADC_quantization is not None:
+                ltc_cell.ADC_quantization = int(args.ADC_quantization)
+                print(f"[Quantize] ADC_quantization = {ltc_cell.ADC_quantization}")
             if clip_lo is not None:
                 ltc_cell.clip_min = float(clip_lo)
                 print(f"[Quantize] clip_min = {ltc_cell.clip_min}")
             if clip_hi is not None:
                 ltc_cell.clip_max = float(clip_hi)
                 print(f"[Quantize] clip_max = {ltc_cell.clip_max}")
+            if clip_rev_sum_lo is not None:
+                ltc_cell.clip_sum_min = float(clip_rev_sum_lo)
+                print(f"[Quantize] clip_sum_min = {ltc_cell.clip_sum_min}")
+            if clip_rev_sum_hi is not None:
+                ltc_cell.clip_sum_max = float(clip_rev_sum_hi)
+                print(f"[Quantize] clip_sum_max = {ltc_cell.clip_sum_max}")
+            if clip_w_sum_lo is not None:
+                ltc_cell.clip_w_sum_min = float(clip_w_sum_lo)
+                print(f"[Quantize] clip_w_sum_min = {ltc_cell.clip_w_sum_min}")
+            if clip_w_sum_hi is not None:
+                ltc_cell.clip_w_sum_max = float(clip_w_sum_hi)
+                print(f"[Quantize] clip_w_sum_max = {ltc_cell.clip_w_sum_max}")
     except Exception as e:
         print(f"[Quantize] injection failed: {e}")
     
@@ -967,10 +1005,17 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--mean_val",
-        type=float,
-        default=-0.5,
-        help="(optional) set mean value for fixed quantization during rollouts",
+        "--DAC_quantization",
+        type=int,
+        default=None,
+        help="(optional) set DAC quantization levels for rollouts",
+    )
+
+    parser.add_argument(
+        "--ADC_quantization",
+        type=int,
+        default=None,
+        help="(optional) set ADC quantization levels for rollouts",
     )
 
     parser.add_argument(
@@ -1006,6 +1051,13 @@ if __name__ == "__main__":
         type=float,
         default=None,
         help="If provided, add Gaussian noise with this stddev to observations during rollout.",
+    )
+
+    parser.add_argument(
+        "--gaussian",
+        type=float,
+        default=None,
+        help="(Deprecated) If provided, add Gaussian noise with this stddev to observations during rollout.",
     )
 
     args = parser.parse_args()

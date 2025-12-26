@@ -30,12 +30,18 @@ class LTCCell(SequenceModule):
         epsilon=1e-8,
         clip_max: Optional[float] = None,
         clip_min: Optional[float] = None,
+        clip_w_sum_max: Optional[float] = None,
+        clip_w_sum_min: Optional[float] = None,
+        clip_rev_sum_max: Optional[float] = None,
+        clip_rev_sum_min: Optional[float] = None,
         implicit_param_constraints=False,
         digital_RRAM_quantization: Optional[int] = None,
         digital_SRAM_quantization: Optional[int] = None,
         weight_quantization: Optional[int] = None,
         CAM_quantization: Optional[int] = None,
         LUT_quantization: Optional[int] = None,
+        ADC_quantization: Optional[int] = None,
+        DAC_quantization: Optional[int] = None,
         calibration_path: Optional[str] = None,
         gaussian: Optional[float] = None,
         log_path: Optional[str] = None,
@@ -83,6 +89,10 @@ class LTCCell(SequenceModule):
         self._epsilon = epsilon
         self.clip_min = clip_min
         self.clip_max = clip_max
+        self.clip_w_sum_min = clip_w_sum_min
+        self.clip_w_sum_max = clip_w_sum_max
+        self.clip_rev_sum_min = clip_rev_sum_min
+        self.clip_rev_sum_max = clip_rev_sum_max
         self._clip = torch.nn.ReLU()
         self.quantize_debug: bool = True
         self.CAM_quantization = CAM_quantization
@@ -90,6 +100,8 @@ class LTCCell(SequenceModule):
         self.digital_RRAM_quantization = digital_RRAM_quantization
         self.digital_SRAM_quantization = digital_SRAM_quantization
         self.weight_quantization = weight_quantization
+        self.ADC_quantization = ADC_quantization
+        self.DAC_quantization = DAC_quantization
         self.calibration_path = calibration_path
         self.gaussian = gaussian
         self._allocate_parameters()
@@ -123,6 +135,8 @@ class LTCCell(SequenceModule):
         self,
         state: torch.Tensor,
         activations: torch.Tensor,
+        denominator: torch.Tensor,
+        numerator: torch.Tensor,
         path: Optional[str] = None,
         bins: int = 100,
         append: bool = True,
@@ -141,12 +155,14 @@ class LTCCell(SequenceModule):
                 "min": float(x.min()),
                 "max": float(x.max()),
                 "mean": float(x.mean()),
-                "hist": torch.histc(x, bins=bins, min=0.0, max=1.0).cpu().tolist(),
+                "hist": torch.histc(x, bins=bins, min=float(x.min()), max=float(x.max())).cpu().tolist(),
             }
 
         record = {
             "activations": stats(activations),
             "states": stats(state),
+            "denominator": stats(denominator),
+            "numerator": stats(numerator),
         }
 
         buf = []
@@ -546,12 +562,12 @@ class LTCCell(SequenceModule):
         self._params["w_rev"].copy_(self._params["w_mask"] * self._params["erev"])
         self._params["sensory_w_rev"].copy_(self._params["sensory_w_mask"] * self._params["sensory_erev"])
         
-    def _weight_quantization(self, weight_quantization=None):
+    def _weight_quantization(self, weight_quantization=None, gaussian: Optional[float] = None):
         if weight_quantization is not None:
-            self._params["w_mask"].copy_(self.ptq_weight_nonzero(self._params["w_mask"], n_bits=weight_quantization, name="w", symmetric=False))
-            self._params["sensory_w_mask"].copy_(self.ptq_weight_nonzero(self._params["sensory_w_mask"], n_bits=weight_quantization, name="sensory_w", symmetric=False))
-            self._params["w_rev"].copy_(self.ptq_weight_nonzero(self._params["w_rev"], n_bits=weight_quantization, name="w_rev", symmetric=True))
-            self._params["sensory_w_rev"].copy_(self.ptq_weight_nonzero(self._params["sensory_w_rev"], n_bits=weight_quantization, name="sensory_w_rev", symmetric=True))
+            self._params["w_mask"].copy_(self.ptq_weight_nonzero(self._params["w_mask"], n_bits=weight_quantization, name="w", symmetric=False, gaussian=gaussian))
+            self._params["sensory_w_mask"].copy_(self.ptq_weight_nonzero(self._params["sensory_w_mask"], n_bits=weight_quantization, name="sensory_w", symmetric=False, gaussian=gaussian))
+            self._params["w_rev"].copy_(self.ptq_weight_nonzero(self._params["w_rev"], n_bits=weight_quantization, name="w_rev", symmetric=True, gaussian=gaussian))
+            self._params["sensory_w_rev"].copy_(self.ptq_weight_nonzero(self._params["sensory_w_rev"], n_bits=weight_quantization, name="sensory_w_rev", symmetric=True, gaussian=gaussian))
             
     def _sigmoid(self, v_pre, mu, sigma):
         v_pre = torch.unsqueeze(v_pre, -1)  # For broadcasting
@@ -571,6 +587,11 @@ class LTCCell(SequenceModule):
         w_rev = self._params["w_rev"]
         gleak = self._params["gleak"]
         vleak = self._params["vleak"]
+
+        # DAC quantization for inputs 
+        if self.DAC_quantization is not None:
+            inputs = self.ptq_range(inputs, n_bits=self.DAC_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name="inputs")
+
         # inputs CAM quantization
         if self.CAM_quantization is not None:
             inputs = self.ptq_cam(inputs, n_bits=self.CAM_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name="inputs", gaussian=self.gaussian)
@@ -582,7 +603,6 @@ class LTCCell(SequenceModule):
 
         # [MVM] We can pre-compute the effects of the sensory neurons here
         sensory_w_activation = sensory_w_param * activate_inputs
-
         sensory_rev_activation = sensory_w_rev * activate_inputs
 
         # Reduce over dimension 1 (=source sensory neurons)
@@ -590,26 +610,33 @@ class LTCCell(SequenceModule):
         w_denominator_sensory = torch.sum(sensory_w_activation, dim=1)
         
         for t in range(self._ode_unfolds):
+            # DAC quantization for state
+            if self.DAC_quantization is not None:
+                v_pre = self.ptq_range(v_pre, n_bits=self.DAC_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name=(f"state_step{t}"))
             # [CAM/LUT] quantization inside the loop for v_pre
             if self.CAM_quantization is not None:
                 v_pre = self.ptq_cam(v_pre, n_bits=self.CAM_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name=f"v_pre_step{t}", gaussian=self.gaussian)
             activate_v_pre = self._sigmoid(v_pre, self._params["mu"], self._params["sigma"])
             if self.LUT_quantization is not None:
                 activate_v_pre = self.ptq_lut(activate_v_pre, n_bits=self.LUT_quantization, name=f"w_activation_step{t}", gaussian=self.gaussian)
-                # for logging LUT activations distribution
-            if self.calibration_path is not None:
-                self.dump_lut_values(v_pre, activate_v_pre, path=self.calibration_path, bins=100, append=True)
 
             if self.digital_SRAM_quantization is not None:
                 state = self.ptq_range(state, n_bits=self.digital_SRAM_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name=(f"state"))
 
             w_activation = w_param * activate_v_pre
-
             rev_activation = w_rev * activate_v_pre
 
             # Reduce over dimension 1 (=source neurons)
             w_numerator = torch.sum(rev_activation, dim=1) + w_numerator_sensory
             w_denominator = torch.sum(w_activation, dim=1) + w_denominator_sensory
+
+            # for logging LUT activations distribution
+            if self.calibration_path is not None:
+                self.dump_lut_values(v_pre, activate_v_pre, w_numerator, w_denominator, path=self.calibration_path, bins=100, append=True)
+
+            if self.ADC_quantization is not None:
+                w_numerator = self.ptq_range(w_numerator, n_bits=self.ADC_quantization, clip_min=self.clip_rev_sum_min, clip_max=self.clip_rev_sum_max, name=(f"w_numerator_step{t}"))
+                w_denominator = self.ptq_range(w_denominator, n_bits=self.ADC_quantization, clip_min=self.clip_w_sum_min, clip_max=self.clip_w_sum_max, name=(f"w_denominator_step{t}"))
 
             numerator = cm_t * state + gleak * vleak + w_numerator
             denominator = cm_t + gleak + w_denominator

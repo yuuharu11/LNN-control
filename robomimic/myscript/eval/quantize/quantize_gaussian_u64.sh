@@ -5,10 +5,11 @@ DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_4.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
 SEED=0
-high_quantize=(6)
-low_quantize=(4)
-CSV_BASE="/work/robomimic/csv/eval/lift/quantize/best/"
-LOG_PATH="/work/robomimic/logs/quantize/best/calibration/u64"
+high_quantize=6
+low_quantize=4
+gaussian=(0 0.05 0.1 0.15 0.2 0.25)
+CSV_BASE="/work/robomimic/csv/eval/lift/quantize/gaussian/"
+LOG_PATH="/work/robomimic/logs/quantize/all/calibration/u64"
 mkdir -p ${CSV_BASE}
 
 # name と dataset_path の対応を associative array で定義
@@ -28,32 +29,28 @@ for name in "${!models[@]}"; do
   units=$(echo "${model_path}" | grep -o 'unit[0-9]\+')
   units=${units:-unit_unknown}
   seed=${name##*_seed}
-    for high_quantize in "${high_quantize[@]}"; do
-        for low_quantize in "${low_quantize[@]}"; do
-          echo "Running inference for ${name} with ${high_quantize}-bit ${low_quantize}-bit quantization..."
-          python /work/robomimic/robomimic/scripts/run_trained_agent.py \
-              --agent "${model_path}" \
-              --n_rollouts "${N_ROLLOUTS}" \
-              --horizon "${HORIZON}" \
-              --seed "${SEED}" \
-              --dataset_path "${DATASET_PATH}" \
-              --name "${name}_quantized_${high_quantize}-${low_quantize}bit" \
-              --calibration_times 3 \
-              --calibration_path "${LOG_PATH}/Seed${seed}.json" \
-              --calibration_percentile 99.9 \
-              --digital_SRAM_quantization "${high_quantize}" \
-              --digital_RRAM_quantization "${low_quantize}" \
-              --weight_quantization "${high_quantize}" \
-              --LUT_quantization "${low_quantize}" \
-              --CAM_quantization "${high_quantize}" \
-              --ADC_quantization 8 \
-              --DAC_quantization 8 \
-              --csv_path "${CSV_BASE}${units}_quantized_${high_quantize}-${low_quantize}.csv" 
+  for g in "${gaussian[@]}"; do
+      echo "Running inference for ${name} with 6bit 4bit quantization with Gaussian noise stddev=${g}..."
+      python /work/robomimic/robomimic/scripts/run_trained_agent.py \
+          --agent "${model_path}" \
+          --n_rollouts "${N_ROLLOUTS}" \
+          --horizon "${HORIZON}" \
+          --seed "${SEED}" \
+          --dataset_path "${DATASET_PATH}" \
+          --name "${name}_quantized_${high_quantize}-${low_quantize}bit" \
+          --calibration_times 3 \
+          --calibration_path "${LOG_PATH}/Seed${seed}.json" \
+          --calibration_percentile 99.9 \
+          --digital_SRAM_quantization "${high_quantize}" \
+          --digital_RRAM_quantization "${low_quantize}" \
+          --weight_quantization "${high_quantize}" \
+          --LUT_quantization "${low_quantize}" \
+          --CAM_quantization "${high_quantize}" \
+          --gaussian "${g}" \
+          --csv_path "${CSV_BASE}${units}_quantized_${high_quantize}-${low_quantize}.csv" 
 
-          echo "Completed: ${name} with ${quantize}-bit quantization"
-          echo "----------------------------------------"
-      done
-    done
+      echo "Completed: ${name} with ${quantize}-bit quantization"
+      echo "----------------------------------------"
     echo "Completed: ${name}"
     echo "----------------------------------------"
 done
