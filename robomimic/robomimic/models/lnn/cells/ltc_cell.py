@@ -37,6 +37,7 @@ class LTCCell(SequenceModule):
         CAM_quantization: Optional[int] = None,
         LUT_quantization: Optional[int] = None,
         calibration_path: Optional[str] = None,
+        gausian: Optional[float] = None,
         log_path: Optional[str] = None,
     ):
         """A `Liquid time-constant (LTC) <https://ojs.aaai.org/index.php/AAAI/article/view/16936>`_ cell.
@@ -90,6 +91,7 @@ class LTCCell(SequenceModule):
         self.digital_SRAM_quantization = digital_SRAM_quantization
         self.weight_quantization = weight_quantization
         self.calibration_path = calibration_path
+        self.gausian = gausian
         self._allocate_parameters()
         
     @property
@@ -350,14 +352,23 @@ class LTCCell(SequenceModule):
 
     # for LUT sigmoid [0,1]
     @torch.no_grad()
-    def ptq_lut_sigmoid(self, params: torch.Tensor, n_bits: int = 8, name: Optional[str] = None):
+    def ptq_lut(self, params: torch.Tensor, n_bits: int = 8, name: Optional[str] = None, gausian: Optional[float] = None):
         qmax = 2 ** n_bits - 1
         scale = 1.0 / qmax
         nz_q = torch.round(params / scale).clamp(0, qmax) * scale
+        if gausian is not None and gausian > 0.0:
+            # Gaussian noise injection
+            noise = torch.randn_like(nz_q) * gausian * scale
+            nz_q = nz_q + noise
+            # clamp to [0,1]
+            nz_q = nz_q.clamp(0.0, 1.0)
+            nz_q = torch.round(nz_q / scale).clamp(0, qmax) * scale
+            if getattr(self, "quantize_debug", False) and name:
+                print(f"[Quantize-LUT-Gaussian] {name}: bits={n_bits}, scale={scale:.3e}, gausian={gausian}")
+        else:
+            if getattr(self, "quantize_debug", False) and name:
+                print(f"[Quantize-LUT] {name}: bits={n_bits}, scale={scale:.3e}")
         params.copy_(nz_q.to(params.dtype))
-
-        if getattr(self, "quantize_debug", False) and name:
-            print(f"[Quantize] {name}: bits={n_bits}, scale={scale:.3e}")
 
         return params
 
@@ -520,7 +531,7 @@ class LTCCell(SequenceModule):
         # [LUT] calculate sigmoid activation function for sensory neurons and quantization 
         activate_inputs = self._sigmoid(inputs, self._params["sensory_mu"], self._params["sensory_sigma"])
         if self.LUT_quantization is not None:
-            activate_inputs = self.ptq_lut_sigmoid(activate_inputs, n_bits=self.LUT_quantization, name="sensory_w_activation")
+            activate_inputs = self.ptq_lut(activate_inputs, n_bits=self.LUT_quantization, name="sensory_w_activation", gausian=self.gausian)
 
         # [MVM] We can pre-compute the effects of the sensory neurons here
         sensory_w_activation = sensory_w_param * activate_inputs
