@@ -37,7 +37,7 @@ class LTCCell(SequenceModule):
         CAM_quantization: Optional[int] = None,
         LUT_quantization: Optional[int] = None,
         calibration_path: Optional[str] = None,
-        gausian: Optional[float] = None,
+        gaussian: Optional[float] = None,
         log_path: Optional[str] = None,
     ):
         """A `Liquid time-constant (LTC) <https://ojs.aaai.org/index.php/AAAI/article/view/16936>`_ cell.
@@ -91,7 +91,7 @@ class LTCCell(SequenceModule):
         self.digital_SRAM_quantization = digital_SRAM_quantization
         self.weight_quantization = weight_quantization
         self.calibration_path = calibration_path
-        self.gausian = gausian
+        self.gaussian = gaussian
         self._allocate_parameters()
         
     @property
@@ -244,13 +244,10 @@ class LTCCell(SequenceModule):
         percentile: float = 0.999,
         name: Optional[str] = None,
         symmetric: bool = True,
+        gaussian: Optional[float] = None    
     ):
         """
-        PTQ for sparse weights.
-        - Only non-zero elements are quantized
-        - Zero is preserved as a dedicated level
-        - symmetric=True  : signed symmetric quantization
-        - symmetric=False : unsigned asymmetric quantization
+        PTQ for sparse weights with Noise Injection.
         """
         assert n_bits >= 2
         if percentile > 1.0:
@@ -259,55 +256,68 @@ class LTCCell(SequenceModule):
         with torch.no_grad():
             x = params.to(torch.float32)
 
+            # 1. Zero-Gating
             nz_mask = x != 0
             nz = x[nz_mask]
 
             if nz.numel() == 0:
                 return params
 
-            # percentile clipping (upper-tail only)
-            max_clip = torch.quantile(nz, percentile)
-            nz = torch.clamp(nz, max=max_clip)
-
+            # 2. Percentile-based clipping
             if symmetric:
-                # -----------------------------
+                abs_nz = nz.abs()
+                max_val = torch.quantile(abs_nz, percentile)
+                nz = torch.clamp(nz, min=-max_val, max=max_val)
+            else:
+                lower = torch.quantile(nz, 1 - percentile)
+                upper = torch.quantile(nz, percentile)
+                nz = torch.clamp(nz, min=lower, max=upper)
+
+            # 3. Quantization mode
+            if symmetric:
                 # Symmetric (signed)
-                # -----------------------------
                 qmax = 2 ** (n_bits - 1) - 1
-
                 abs_max = nz.abs().max()
-                if abs_max < 1e-12:
-                    return params
-
+                if abs_max < 1e-12: return params # Avoid div/0
+                
                 scale = abs_max / qmax
+                
                 nz_q = torch.round(nz / scale).clamp(-qmax, qmax) * scale
 
             else:
-                # -----------------------------
                 # Asymmetric (unsigned)
-                # -----------------------------
                 qmax = 2 ** n_bits - 1
-
                 min_val = nz.min()
                 max_val = nz.max()
-                if max_val - min_val < 1e-12:
-                    return params
+                if max_val - min_val < 1e-12: return params
 
                 scale = (max_val - min_val) / qmax
                 nz_q = torch.round((nz - min_val) / scale).clamp(0, qmax) * scale + min_val
 
-            # write back
+            # 4. Noise injection & ADC re-quantization (this is important!)
+            if gaussian is not None and gaussian > 0.0:
+                # Gaussian noise injection (Additive Noise: scaled by quantization step size)
+                noise = torch.randn_like(nz_q) * gaussian * scale
+                nz_q = nz_q + noise
+
+                if symmetric:
+                    nz_q = nz_q.clamp(-abs_max, abs_max) 
+                else:
+                    nz_q = nz_q.clamp(min_val, max_val)
+                
+                if getattr(self, "quantize_debug", False) and name:
+                     mode = "sym" if symmetric else "asym"
+                     print(f"[Quantize-Weight-{mode}-Gaussian] {name}: bits={n_bits} "
+                           f"p{percentile*100:.2f}% scale={scale:.3e}, gaussian={gaussian}")
+            else:
+                if getattr(self, "quantize_debug", False) and name:
+                     mode = "sym" if symmetric else "asym"
+                     print(f"[Quantize-Weight-{mode}] {name}: bits={n_bits} "
+                           f"p{percentile*100:.2f}% scale={scale:.3e}")
+            # write back 
             out = x.clone()
             out[nz_mask] = nz_q
             params.copy_(out.to(params.dtype))
-
-            if getattr(self, "quantize_debug", False) and name:
-                sp = 1.0 - nz.numel() / x.numel()
-                mode = "sym" if symmetric else "asym"
-                print(
-                    f"[Quantize-NZ-{mode}] {name}: bits={n_bits} "
-                    f"sp={sp*100:.1f}% scale={scale:.3e}"
-                )
 
         return params
     
@@ -349,22 +359,59 @@ class LTCCell(SequenceModule):
             )
 
         return params
+    
+    @torch.no_grad()
+    def ptq_cam(
+        self, 
+        params: torch.Tensor, 
+        n_bits: int = 8, 
+        name: Optional[str] = None,
+        clip_min: float = -0.5,
+        clip_max: Optional[float] = 0.5,   
+        gaussian: Optional[float] = None
+    ):
+        # signed range
+        qmax = 2 ** (n_bits) - 1
+
+        x = params.to(torch.float32)
+
+        scale = (clip_max - clip_min) / qmax
+        
+        x_clipped = x.clamp(min=clip_min, max=clip_max)
+        q = torch.round((x_clipped - clip_min) / scale).clamp(0, qmax)
+
+        if gaussian is not None and gaussian > 0.0:
+            # Gaussian noise injection
+            noise = torch.randn_like(q) * gaussian
+            q = q + noise
+            q = torch.round(q).clamp(0, qmax)            
+
+        x_q = q * scale + clip_min
+
+        params.copy_(x_q.to(params.dtype))
+
+        if getattr(self, "quantize_debug", False) and name:
+            print(
+                f"[Quantize-minmax] {name}: bits={n_bits}, "
+                f"scale={scale:.3e}, clip_min={clip_min:.3e}, clip_max={clip_max:.3e}"
+            )
+
+        return params
 
     # for LUT sigmoid [0,1]
     @torch.no_grad()
-    def ptq_lut(self, params: torch.Tensor, n_bits: int = 8, name: Optional[str] = None, gausian: Optional[float] = None):
+    def ptq_lut(self, params: torch.Tensor, n_bits: int = 8, name: Optional[str] = None, gaussian: Optional[float] = None):
         qmax = 2 ** n_bits - 1
         scale = 1.0 / qmax
         nz_q = torch.round(params / scale).clamp(0, qmax) * scale
-        if gausian is not None and gausian > 0.0:
+        if gaussian is not None and gaussian > 0.0:
             # Gaussian noise injection
-            noise = torch.randn_like(nz_q) * gausian * scale
+            noise = torch.randn_like(nz_q) * gaussian * scale
             nz_q = nz_q + noise
             # clamp to [0,1]
             nz_q = nz_q.clamp(0.0, 1.0)
-            nz_q = torch.round(nz_q / scale).clamp(0, qmax) * scale
             if getattr(self, "quantize_debug", False) and name:
-                print(f"[Quantize-LUT-Gaussian] {name}: bits={n_bits}, scale={scale:.3e}, gausian={gausian}")
+                print(f"[Quantize-LUT-Gaussian] {name}: bits={n_bits}, scale={scale:.3e}, gaussian={gaussian}")
         else:
             if getattr(self, "quantize_debug", False) and name:
                 print(f"[Quantize-LUT] {name}: bits={n_bits}, scale={scale:.3e}")
@@ -526,12 +573,12 @@ class LTCCell(SequenceModule):
         vleak = self._params["vleak"]
         # inputs CAM quantization
         if self.CAM_quantization is not None:
-            inputs = self.ptq_range(inputs, n_bits=self.CAM_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name="inputs")
-        
+            inputs = self.ptq_cam(inputs, n_bits=self.CAM_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name="inputs", gaussian=self.gaussian)
+            
         # [LUT] calculate sigmoid activation function for sensory neurons and quantization 
         activate_inputs = self._sigmoid(inputs, self._params["sensory_mu"], self._params["sensory_sigma"])
         if self.LUT_quantization is not None:
-            activate_inputs = self.ptq_lut(activate_inputs, n_bits=self.LUT_quantization, name="sensory_w_activation", gausian=self.gausian)
+            activate_inputs = self.ptq_lut(activate_inputs, n_bits=self.LUT_quantization, name="sensory_w_activation", gaussian=self.gaussian)
 
         # [MVM] We can pre-compute the effects of the sensory neurons here
         sensory_w_activation = sensory_w_param * activate_inputs
@@ -545,10 +592,10 @@ class LTCCell(SequenceModule):
         for t in range(self._ode_unfolds):
             # [CAM/LUT] quantization inside the loop for v_pre
             if self.CAM_quantization is not None:
-                v_pre = self.ptq_range(v_pre, n_bits=self.CAM_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name=f"v_pre_step{t}")
+                v_pre = self.ptq_cam(v_pre, n_bits=self.CAM_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name=f"v_pre_step{t}", gaussian=self.gaussian)
             activate_v_pre = self._sigmoid(v_pre, self._params["mu"], self._params["sigma"])
             if self.LUT_quantization is not None:
-                activate_v_pre = self.ptq_lut_sigmoid(activate_v_pre, n_bits=self.LUT_quantization, name=f"w_activation_step{t}")
+                activate_v_pre = self.ptq_lut(activate_v_pre, n_bits=self.LUT_quantization, name=f"w_activation_step{t}", gaussian=self.gaussian)
                 # for logging LUT activations distribution
             if self.calibration_path is not None:
                 self.dump_lut_values(v_pre, activate_v_pre, path=self.calibration_path, bins=100, append=True)
