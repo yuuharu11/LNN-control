@@ -26,11 +26,6 @@ declare -A models=(
   ["ncp_u256_best_seed3"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed3/models/model_epoch_150_low_dim_v15_success_1.0.pth"
   ["ncp_u256_best_seed4"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed4/models/model_epoch_350_low_dim_v15_success_1.0.pth"
   ["ncp_u256_best_seed5"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed5/models/model_epoch_200_low_dim_v15_success_1.0.pth"
-  ["ncp_u512_best_seed1"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit512/seed1/models/model_epoch_50_low_dim_v15_success_1.0.pth"
-  ["ncp_u512_best_seed2"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit512/seed2/models/model_epoch_50_low_dim_v15_success_1.0.pth"
-  ["ncp_u512_best_seed3"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit512/seed3/models/model_epoch_150_low_dim_v15_success_1.0.pth"
-  ["ncp_u512_best_seed4"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit512/seed4/models/model_epoch_50_low_dim_v15_success_1.0.pth"
-  ["ncp_u512_best_seed5"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit512/seed5/models/model_epoch_350_low_dim_v15_success_1.0.pth"
 )
 
 # 各データセットに対して逐次推論を実行

@@ -46,7 +46,7 @@ for name in "${!models[@]}"; do
           --calibration_path "${LOG_PATH}/u${units}/Seed${seed}.json" \
           --calibration_percentile 99.9 \
           --dataset_path "${DATASET_PATH}" \
-          --name "u${units}_quantized_${quantize}bit" \
+          --name "u${units}_quantized_${quantize}bit_seed${seed}" \
           --CAM_quantization "${quantize}" \
           --csv_path "${CSV_BASE}u${units}_quantized_${quantize}bit.csv" \
 

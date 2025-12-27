@@ -598,18 +598,18 @@ class LTCCell(SequenceModule):
         gleak = self._params["gleak"]
         vleak = self._params["vleak"]
 
-        # DAC quantization for inputs 
-        if self.DAC_quantization is not None:
-            inputs = self.ptq_range(inputs, n_bits=self.DAC_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name="inputs")
-
         # inputs CAM quantization
         if self.CAM_quantization is not None:
-            inputs = self.ptq_cam(inputs, n_bits=self.CAM_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name="inputs", gaussian=self.gaussian)
+            inputs = self.ptq_cam(inputs, n_bits=self.CAM_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name="inputs")
             
         # [LUT] calculate sigmoid activation function for sensory neurons and quantization 
         activate_inputs = self._sigmoid(inputs, self._params["sensory_mu"], self._params["sensory_sigma"])
         if self.LUT_quantization is not None:
-            activate_inputs = self.ptq_lut(activate_inputs, n_bits=self.LUT_quantization, name="sensory_w_activation", gaussian=self.gaussian)
+            activate_inputs = self.ptq_lut(activate_inputs, n_bits=self.LUT_quantization, name="sensory_w_activation")
+
+        # DAC quantization for inputs 
+        if self.DAC_quantization is not None:
+            inputs = self.ptq_range(inputs, n_bits=self.DAC_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name="inputs")
 
         # [MVM] We can pre-compute the effects of the sensory neurons here
         sensory_w_activation = sensory_w_param * activate_inputs
@@ -620,15 +620,15 @@ class LTCCell(SequenceModule):
         w_denominator_sensory = torch.sum(sensory_w_activation, dim=1)
         
         for t in range(self._ode_unfolds):
+            # [CAM/LUT] quantization inside the loop for v_pre
+            if self.CAM_quantization is not None:
+                v_pre = self.ptq_cam(v_pre, n_bits=self.CAM_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name=f"v_pre_step{t}")
+            activate_v_pre = self._sigmoid(v_pre, self._params["mu"], self._params["sigma"])
+            if self.LUT_quantization is not None:
+                activate_v_pre = self.ptq_lut(activate_v_pre, n_bits=self.LUT_quantization, name=f"w_activation_step{t}")
             # DAC quantization for state
             if self.DAC_quantization is not None:
                 v_pre = self.ptq_range(v_pre, n_bits=self.DAC_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name=(f"state_step{t}"))
-            # [CAM/LUT] quantization inside the loop for v_pre
-            if self.CAM_quantization is not None:
-                v_pre = self.ptq_cam(v_pre, n_bits=self.CAM_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name=f"v_pre_step{t}", gaussian=self.gaussian)
-            activate_v_pre = self._sigmoid(v_pre, self._params["mu"], self._params["sigma"])
-            if self.LUT_quantization is not None:
-                activate_v_pre = self.ptq_lut(activate_v_pre, n_bits=self.LUT_quantization, name=f"w_activation_step{t}", gaussian=self.gaussian)
 
             if self.digital_SRAM_quantization is not None:
                 state = self.ptq_range(state, n_bits=self.digital_SRAM_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name=(f"state"))

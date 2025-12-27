@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # モデルファイルと共通パラメータ
-DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15.hdf5"
+DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_2.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
 SEED=0
-QUANTIZES=(8 6 4 3 2)
+QUANTIZES=(7 5 1)
 CSV_BASE="/work/robomimic/csv/eval/lift/quantize/weight/"
 mkdir -p ${CSV_BASE}
 
@@ -46,7 +46,6 @@ for name in "${!models[@]}"; do
             --name "${name}_quantized_${quantize}bit" \
             --weight_quantization "${quantize}" \
             --csv_path "${CSV_BASE}${units}_quantized_${quantize}bit.csv" \
-            --log_path "/work/robomimic/quantize_logs/Weight/u${units}_${quantize}bit.json"
 
         echo "Completed: ${name} with ${quantize}-bit quantization"
         echo "----------------------------------------"
