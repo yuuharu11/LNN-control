@@ -5,7 +5,7 @@ DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_3.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
 SEED=0
-QUANTIZES=(8 6 4 3 2)
+QUANTIZES=(7 5 1)
 CSV_BASE="/work/robomimic/csv/eval/lift/quantize/LUT/"
 mkdir -p ${CSV_BASE}
 
@@ -46,8 +46,7 @@ for name in "${!models[@]}"; do
             --dataset_path "${DATASET_PATH}" \
             --name "${units}_quantized_${quantize}bit" \
             --LUT_quantization "${quantize}" \
-            --csv_path "${CSV_BASE}${units}_quantized_${quantize}bit.csv" \
-            --log_path "/work/robomimic/quantize_logs/LUT/u${units}_${quantize}bit.json"
+            --csv_path "${CSV_BASE}${units}_quantized_${quantize}bit.csv" 
 
         echo "Completed: ${name} with ${quantize}-bit quantization"
         echo "----------------------------------------"

@@ -260,7 +260,8 @@ class LTCCell(SequenceModule):
         percentile: float = 0.999,
         name: Optional[str] = None,
         symmetric: bool = True,
-        gaussian: Optional[float] = None    
+        gaussian: Optional[float] = 0.0,
+        shift: Optional[float] = 0.0,
     ):
         """
         PTQ for sparse weights with Noise Injection.
@@ -302,7 +303,7 @@ class LTCCell(SequenceModule):
 
             else:
                 # Asymmetric (unsigned)
-                qmax = 2 ** n_bits - 1
+                qmax = 2 ** n_bits - 2
                 min_val = nz.min()
                 max_val = nz.max()
                 if max_val - min_val < 1e-12: return params
@@ -325,6 +326,15 @@ class LTCCell(SequenceModule):
                      mode = "sym" if symmetric else "asym"
                      print(f"[Quantize-Weight-{mode}-Gaussian] {name}: bits={n_bits} "
                            f"p{percentile*100:.2f}% scale={scale:.3e}, gaussian={gaussian}")
+            elif shift is not None and shift != 0.0:
+                # Uniform shift noise injection
+                noise = shift * scale
+                nz_q = nz_q + noise
+
+                if getattr(self, "quantize_debug", False) and name:
+                     mode = "sym" if symmetric else "asym"
+                     print(f"[Quantize-Weight-{mode}-Shift] {name}: bits={n_bits} "
+                           f"p{percentile*100:.2f}% scale={scale:.3e}, shift={shift}")
             else:
                 if getattr(self, "quantize_debug", False) and name:
                      mode = "sym" if symmetric else "asym"

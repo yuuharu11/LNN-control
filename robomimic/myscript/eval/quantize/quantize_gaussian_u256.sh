@@ -7,7 +7,7 @@ HORIZON=400
 SEED=0
 high_quantize=6
 low_quantize=4
-gaussian=(0 0.05 0.1 0.15 0.2 0.25)
+gaussian=(0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0)
 CSV_BASE="/work/robomimic/csv/eval/lift/quantize/gaussian/"
 LOG_PATH="/work/robomimic/logs/quantize/gaussian/calibration/u256"
 mkdir -p ${CSV_BASE}

@@ -5,8 +5,9 @@ DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_5.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
 SEED=0
-QUANTIZES=(8 6 4 3 2)
-CSV_BASE="/work/robomimic/csv/eval/lift/quantize/digital/clip/"
+QUANTIZES=(8 7 6 5 4 3 2 1)
+CSV_BASE="/work/robomimic/csv/eval/lift/quantize/digital/calibration/"
+LOG_PATH="/work/robomimic/logs/quantize/best/calibration/"
 mkdir -p ${CSV_BASE}
 
 # name と dataset_path の対応を associative array で定義
@@ -33,8 +34,9 @@ for name in "${!models[@]}"; do
   model_path="${models[$name]}"
 
   # unitsの抽出
-  units=$(echo "${model_path}" | grep -o 'unit[0-9]\+')
+  units=$(echo "${model_path}" | grep -o 'unit[0-9]\+' | grep -o '[0-9]\+')
   units=${units:-unit_unknown}
+  seed=${name##*_seed}
     for quantize in "${QUANTIZES[@]}"; do
         echo "Running inference for ${name} with ${quantize}-bit quantization..."
         python /work/robomimic/robomimic/scripts/run_trained_agent.py \
@@ -42,12 +44,13 @@ for name in "${!models[@]}"; do
             --n_rollouts "${N_ROLLOUTS}" \
             --horizon "${HORIZON}" \
             --seed "${SEED}" \
+            --calibration_times 3 \
+            --calibration_path "${LOG_PATH}/u${units}/Seed${seed}.json" \
+            --calibration_percentile 99.9 \
             --dataset_path "${DATASET_PATH}" \
-            --name "${units}_quantized_${quantize}bit" \
-            --clip_min -1.544 \
-            --clip_max 1.318 \
+            --name "u${units}_quantized_${quantize}bit" \
             --digital_SRAM_quantization "${quantize}" \
-            --csv_path "${CSV_BASE}${units}_quantized_${quantize}bit.csv"
+            --csv_path "${CSV_BASE}u${units}_quantized_${quantize}bit.csv"
 
         echo "Completed: ${name} with ${quantize}-bit quantization"
         echo "----------------------------------------"
