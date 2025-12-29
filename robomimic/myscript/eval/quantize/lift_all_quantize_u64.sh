@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # モデルファイルと共通パラメータ
-DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_4.hdf5"
+DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_2.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
 SEED=0
 high_quantize=(6)
-low_quantize=(4)
-CSV_BASE="/work/robomimic/csv/eval/lift/quantize/best/"
+low_quantize=(5 4)
+CSV_BASE="/work/robomimic/csv/eval/lift/quantize/all/new/"
 LOG_PATH="/work/robomimic/logs/quantize/best/calibration/u64"
 mkdir -p ${CSV_BASE}
 
@@ -30,6 +30,9 @@ for name in "${!models[@]}"; do
   seed=${name##*_seed}
     for high_quantize in "${high_quantize[@]}"; do
         for low_quantize in "${low_quantize[@]}"; do
+          if [ "$high_quantize" -eq 5 ] && [ "$low_quantize" -eq 4 ]; then
+            continue
+          fi
           echo "Running inference for ${name} with ${high_quantize}-bit ${low_quantize}-bit quantization..."
           python /work/robomimic/robomimic/scripts/run_trained_agent.py \
               --agent "${model_path}" \

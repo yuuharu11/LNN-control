@@ -63,6 +63,11 @@ import csv
 import os
 
 import torch
+try:
+    import pynvml
+    _NVML_IMPORTED = True
+except ImportError:
+    _NVML_IMPORTED = False
 
 import robomimic
 import robomimic.utils.file_utils as FileUtils
@@ -75,23 +80,96 @@ from robomimic.algo import RolloutPolicy
 from typing import Optional
 
 class PerformanceMonitor:
-    """ monitor gpu/CPU memory usage and time taken for rollouts """
-    def __init__(self, device):
+    """
+    Monitor runtime performance metrics for rollouts.
+
+    Measures:
+      - GPU memory allocated by PyTorch (MB)
+      - GPU memory reserved by PyTorch (MB)
+      - CPU RSS memory of the main process (MB)
+      - GPU power usage via NVML (W), if available
+      - Elapsed wall-clock time (s)
+
+    Notes:
+      - GPU memory metrics reflect PyTorch allocations,
+        not total device usage (e.g., nvidia-smi).
+      - CPU memory is measured for the main process only.
+    """
+    def __init__(self, device, gpu_index=0):
         self.device = device
-        self.use_gpu = torch.cuda.is_available() and ("cuda" in str(device))
-    
-    def gpu_memory_mb(self):
-        """ gpu memory usage in MB """
-        if self.use_gpu:
-            return torch.cuda.memory_allocated(self.device) / 1024.0 / 1024.0
-        else:
+        self.use_gpu = (
+            torch.cuda.is_available()
+            and isinstance(device, torch.device)
+            and device.type == "cuda"
+        )
+
+        # --- NVML setup ---
+        self.nvml_available = False
+        if self.use_gpu and _NVML_IMPORTED:
+            try:
+                pynvml.nvmlInit()
+                self.handle = pynvml.nvmlDeviceGetHandleByIndex(gpu_index)
+                self.nvml_available = True
+            except Exception as e:
+                print(f"[PerformanceMonitor] NVML not available: {e}")
+
+    # ------------------------------------------------------------------
+    # GPU memory
+    # ------------------------------------------------------------------
+    def gpu_memory_allocated_mb(self):
+        """GPU memory allocated by tensors (MB)."""
+        if not self.use_gpu:
             return 0.0
+        return torch.cuda.memory_allocated(self.device) / 1024.0 / 1024.0
 
+    def gpu_memory_reserved_mb(self):
+        """GPU memory reserved by PyTorch caching allocator (MB)."""
+        if not self.use_gpu:
+            return 0.0
+        return torch.cuda.memory_reserved(self.device) / 1024.0 / 1024.0
+
+    # ------------------------------------------------------------------
+    # CPU memory
+    # ------------------------------------------------------------------
     def cpu_memory_mb(self):
-        """ cpu memory usage in MB """
-        process=psutil.Process()
-
+        """RSS memory of the main process (MB)."""
+        process = psutil.Process()
         return process.memory_info().rss / 1024.0 / 1024.0
+
+    # ------------------------------------------------------------------
+    # GPU power
+    # ------------------------------------------------------------------
+    def gpu_power_usage(self):
+        """Instantaneous GPU power usage (W)."""
+        if not self.nvml_available:
+            return None
+        power_mw = pynvml.nvmlDeviceGetPowerUsage(self.handle)
+        return power_mw / 1000.0
+
+    # ------------------------------------------------------------------
+    # Idle Power
+    # ------------------------------------------------------------------
+    def gpu_idle_power(self, n_samples=100, delay=00.1):
+        """Measure idle GPU power usage (W) by averaging multiple samples."""
+        if not self.nvml_available:
+            return None
+        powers = []
+        for _ in range(n_samples):
+            power = self.gpu_power_usage()
+            if power is not None:
+                powers.append(power)
+            time.sleep(delay)
+        if len(powers) == 0:
+            return None
+        return sum(powers) / len(powers)
+    # ------------------------------------------------------------------
+    # Cleanup
+    # ------------------------------------------------------------------
+    def shutdown(self):
+        """Shutdown NVML cleanly."""
+        if self.nvml_available:
+            pynvml.nvmlShutdown()
+            self.nvml_available = False
     
 class LNNStateRecorder:
     """Recorder for LNN states during rollout, with optional hook-based recording."""
@@ -481,18 +559,29 @@ def rollout(policy, env, horizon, render=False, video_writer=None, video_skip=5,
     # for monitoring performance
     step_latencies, policy_latencies, env_step_times = [], [], []
     gpu_memories, cpu_memories = [], []
+    power_usages = []
 
     try:
         for step_i in range(horizon):
-            gpu_memory=0.0
-            cpu_memory=0.0
+            if performance_monitor is not None:
+                gpu_mem_before = performance_monitor.gpu_memory_allocated_mb()
+                cpu_mem_before = performance_monitor.cpu_memory_mb()
+                p_before = performance_monitor.gpu_power_usage()
+
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
 
             t1 = time.time()
             # get action from policy
             act = policy(ob=obs)
 
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+
             t2 = time.time()
             policy_latencies.append(t2 - t1)
+            p_after = performance_monitor.gpu_power_usage()
+            power_usages.append((p_after + p_before)/2)
 
             # play action
             next_obs, r, done, _ = env.step(act)
@@ -500,16 +589,15 @@ def rollout(policy, env, horizon, render=False, video_writer=None, video_skip=5,
             if observation_noise is not None:
                 next_obs = add_observation_noise(next_obs, observation_noise)
 
-            t3 = time.time()
-            env_step_times.append(t3 - t2)
-
             # compute reward
             total_reward += r
             success = env.is_success()["task"]
 
             if performance_monitor is not None:
-                gpu_memories.append(performance_monitor.gpu_memory_mb()-gpu_memory)
-                cpu_memories.append(performance_monitor.cpu_memory_mb()-cpu_memory)
+                gpu_mem_after = performance_monitor.gpu_memory_allocated_mb()
+                cpu_mem_after = performance_monitor.cpu_memory_mb()
+                gpu_memories.append(gpu_mem_after - gpu_mem_before)
+                cpu_memories.append(cpu_mem_after - cpu_mem_before)
 
             # visualization
             if render:
@@ -555,10 +643,8 @@ def rollout(policy, env, horizon, render=False, video_writer=None, video_skip=5,
                 Success_Rate=float(success),
                 Avg_Policy_Latency=np.mean(policy_latencies),
                 Std_Policy_Latency=np.std(policy_latencies),
-                Avg_Env_Step_Time=np.mean(env_step_times),
-                Std_Env_Step_Time=np.std(env_step_times),
-                Avg_Step_Latency=np.mean(step_latencies),
-                Std_Step_Latency=np.std(step_latencies),
+                Avg_Power_Usage_W=np.mean(power_usages) if power_usages else None,
+                Std_Power_Usage_W=np.std(power_usages) if power_usages else None,
                 Avg_GPU_Memory_MB=np.mean(gpu_memories),
                 Std_GPU_Memory_MB=np.std(gpu_memories),
                 Avg_CPU_Memory_MB=np.mean(cpu_memories),
@@ -670,10 +756,9 @@ def run_trained_agent(args):
             'success_rate',
             'avg_policy_latency_ms',
             'std_policy_latency_ms',
-            'avg_env_step_time_ms',
-            'std_env_step_time_ms',
-            'avg_step_latency_ms',
-            'std_step_latency_ms',
+            'avg_power_usage_w',
+            'std_power_usage_w',
+            'idle_power_w',
             'avg_gpu_memory_increase_mb',
             'std_gpu_memory_increase_mb',
             'avg_cpu_memory_increase_mb',
@@ -702,11 +787,13 @@ def run_trained_agent(args):
         data_grp = data_writer.create_group("data")
         total_samples = 0
 
-    # Initialize LTC cell for quantization
-    ltc_cell = policy.policy.nets['policy'].core.rnn_cell
-    ltc_cell._make_positive()
-    ltc_cell._weight_calc()
-    if ltc_cell is None:
+    ltc_cell = None
+    try:
+        # Initialize LTC cell for quantization
+        ltc_cell = policy.policy.nets['policy'].core.rnn_cell
+        ltc_cell._make_positive()
+        ltc_cell._weight_calc()
+    except Exception as e:
         print("[Quantize] LTCCell not found; skip injection.")
 
     clip_lo = clip_hi = clip_w_sum_lo = clip_w_sum_hi = clip_rev_sum_lo = clip_rev_sum_hi = None
@@ -774,13 +861,14 @@ def run_trained_agent(args):
             if clip_w_sum_hi is not None:
                 ltc_cell.clip_w_sum_max = float(clip_w_sum_hi)
                 print(f"[Quantize] clip_w_sum_max = {ltc_cell.clip_w_sum_max}")
+            for name, p in ltc_cell.named_parameters():
+                print(name, p.shape)
     except Exception as e:
         print(f"[Quantize] injection failed: {e}")
-    
-    for name, p in ltc_cell.named_parameters():
-        print(name, p.shape)
 
     rollout_stats = []
+    perf = PerformanceMonitor(device=device)
+    idle_power = perf.gpu_idle_power()
     for i in range(rollout_num_episodes):
         stats, traj = rollout(
             policy=policy, 
@@ -791,7 +879,7 @@ def run_trained_agent(args):
             video_skip=args.video_skip, 
             return_obs=(write_dataset and args.dataset_obs),
             camera_names=args.camera_names,
-            performance_monitor=PerformanceMonitor(device=device),
+            performance_monitor=perf,
             obs_keys=obs_keys,
             lnn_record=args.lnn_record,
             observation_noise=args.observation_noise,
@@ -817,7 +905,8 @@ def run_trained_agent(args):
                 ep_data_grp.attrs["model_file"] = traj["initial_state_dict"]["model"] # model xml for this episode
             ep_data_grp.attrs["num_samples"] = traj["actions"].shape[0] # number of transitions in this episode
             total_samples += traj["actions"].shape[0]
-
+    
+    perf.shutdown()
     rollout_stats = TensorUtils.list_of_flat_dict_to_dict_of_list(rollout_stats)
     avg_rollout_stats = { k : np.mean(rollout_stats[k]) for k in rollout_stats }
     avg_rollout_stats["Num_Success"] = np.sum(rollout_stats["Success_Rate"])
@@ -843,10 +932,9 @@ def run_trained_agent(args):
             'success_rate': avg_rollout_stats["Num_Success"] / rollout_num_episodes,
             'avg_policy_latency_ms': avg_rollout_stats["Avg_Policy_Latency"] * 1000.0,
             'std_policy_latency_ms': avg_rollout_stats["Std_Policy_Latency"] * 1000.0,
-            'avg_env_step_time_ms': avg_rollout_stats["Avg_Env_Step_Time"] * 1000.0,
-            'std_env_step_time_ms': avg_rollout_stats["Std_Env_Step_Time"] * 1000.0,
-            'avg_step_latency_ms': avg_rollout_stats["Avg_Step_Latency"] * 1000.0,
-            'std_step_latency_ms': avg_rollout_stats["Std_Step_Latency"] * 1000.0,
+            'avg_power_usage_w': avg_rollout_stats["Avg_Power_Usage_W"],
+            'std_power_usage_w': avg_rollout_stats["Std_Power_Usage_W"],
+            'idle_power_w': idle_power,
             'avg_gpu_memory_increase_mb': avg_rollout_stats["Avg_GPU_Memory_MB"],
             'std_gpu_memory_increase_mb': avg_rollout_stats["Std_GPU_Memory_MB"],
             'avg_cpu_memory_increase_mb': avg_rollout_stats["Avg_CPU_Memory_MB"],

@@ -609,7 +609,7 @@ class LTCCell(SequenceModule):
 
         # DAC quantization for inputs 
         if self.DAC_quantization is not None:
-            inputs = self.ptq_range(inputs, n_bits=self.DAC_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name="inputs")
+            activate_inputs = self.ptq_range(activate_inputs, n_bits=self.DAC_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name="inputs")
 
         # [MVM] We can pre-compute the effects of the sensory neurons here
         sensory_w_activation = sensory_w_param * activate_inputs
@@ -628,7 +628,7 @@ class LTCCell(SequenceModule):
                 activate_v_pre = self.ptq_lut(activate_v_pre, n_bits=self.LUT_quantization, name=f"w_activation_step{t}")
             # DAC quantization for state
             if self.DAC_quantization is not None:
-                v_pre = self.ptq_range(v_pre, n_bits=self.DAC_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name=(f"state_step{t}"))
+                activate_v_pre = self.ptq_range(activate_v_pre, n_bits=self.DAC_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name=(f"state_step{t}"))
 
             if self.digital_SRAM_quantization is not None:
                 state = self.ptq_range(state, n_bits=self.digital_SRAM_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name=(f"state"))

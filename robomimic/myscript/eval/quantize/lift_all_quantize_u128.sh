@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # モデルファイルと共通パラメータ
-DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_3.hdf5"
+DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_4.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
 SEED=0
 high_quantize=(6)
-low_quantize=(4)
-CSV_BASE="/work/robomimic/csv/eval/lift/quantize/best/"
+low_quantize=(5 4)
+CSV_BASE="/work/robomimic/csv/eval/lift/quantize/all/new/"
 LOG_PATH="/work/robomimic/logs/quantize/best/calibration/u128"
 mkdir -p ${CSV_BASE}
 
