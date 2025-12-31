@@ -5,9 +5,9 @@ DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_5.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
 SEED=0
-high_quantize=(6)
-low_quantize=(5 4)
-CSV_BASE="/work/robomimic/csv/eval/lift/quantize/all/new/"
+high_quantize=(6 5 4)
+low_quantize=(5 4 3)
+CSV_BASE="/work/robomimic/csv/eval/lift/quantize/all/test/"
 LOG_PATH="/work/robomimic/logs/quantize/best/calibration/u256"
 mkdir -p ${CSV_BASE}
 
@@ -39,14 +39,14 @@ for name in "${!models[@]}"; do
               --horizon "${HORIZON}" \
               --seed "${SEED}" \
               --dataset_path "${DATASET_PATH}" \
-              --name "${name}_quantized_${high_quantize}-${low_quantize}bit" \
+              --name "${name}_quantized_${high_quantize}-${low_quantize}_w6bit" \
               --calibration_times 3 \
               --calibration_path "${LOG_PATH}/Seed${seed}.json" \
               --calibration_percentile 99.9 \
               --digital_SRAM_quantization "${high_quantize}" \
               --digital_RRAM_quantization "${low_quantize}" \
-              --weight_quantization "${high_quantize}" \
-              --LUT_quantization "${low_quantize}" \
+              --weight_quantization 6 \
+              --LUT_quantization 3 \
               --CAM_quantization "${high_quantize}" \
               --ADC_quantization 8 \
               --DAC_quantization 8 \
