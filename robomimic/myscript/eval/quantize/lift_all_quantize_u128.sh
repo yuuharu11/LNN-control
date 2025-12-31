@@ -7,7 +7,7 @@ HORIZON=400
 SEED=0
 high_quantize=(6 5)
 low_quantize=(5)
-CSV_BASE="/work/robomimic/csv/eval/lift/quantize/all/test/"
+CSV_BASE="/work/robomimic/csv/eval/lift/quantize/all/weight-6bit/ADC-DAC-8bit/LUT-4bit"
 LOG_PATH="/work/robomimic/logs/quantize/best/calibration/u128"
 mkdir -p ${CSV_BASE}
 
@@ -47,7 +47,7 @@ for name in "${!models[@]}"; do
               --CAM_quantization "${high_quantize}" \
               --ADC_quantization 8 \
               --DAC_quantization 8 \
-              --csv_path "${CSV_BASE}${units}_quantized_${high_quantize}-${low_quantize}.csv" 
+              --csv_path "${CSV_BASE}/CAM-${high_quantize}bit/${high_quantize}-${low_quantize}/${units}.csv" 
 
           echo "Completed: ${name} with ${quantize}-bit quantization"
           echo "----------------------------------------"
