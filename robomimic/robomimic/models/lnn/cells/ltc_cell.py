@@ -598,51 +598,45 @@ class LTCCell(SequenceModule):
         gleak = self._params["gleak"]
         vleak = self._params["vleak"]
 
-        # inputs CAM quantization
-        if self.CAM_quantization is not None:
-            inputs = self.ptq_cam(inputs, n_bits=self.CAM_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name="inputs")
-            
-        # [LUT] calculate sigmoid activation function for sensory neurons and quantization 
-        activate_inputs = self._sigmoid(inputs, self._params["sensory_mu"], self._params["sensory_sigma"])
-        if self.LUT_quantization is not None:
-            activate_inputs = self.ptq_lut(activate_inputs, n_bits=self.LUT_quantization, name="sensory_w_activation")
+        # concatenate w and sensory_w, mu, sigma
+        concatenated_w = torch.cat((sensory_w_param, w_param), dim=0)
+        concatenated_w_rev = torch.cat((sensory_w_rev, w_rev), dim=0)
+        concatenated_mu = torch.cat((self._params["sensory_mu"], self._params["mu"]), dim=0)
+        concatenated_sigma = torch.cat((self._params["sensory_sigma"], self._params["sigma"]), dim=0)
 
-        # DAC quantization for inputs 
-        if self.DAC_quantization is not None:
-            activate_inputs = self.ptq_range(activate_inputs, n_bits=self.DAC_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name="inputs")
-
-        # [MVM] We can pre-compute the effects of the sensory neurons here
-        sensory_w_activation = sensory_w_param * activate_inputs
-        sensory_rev_activation = sensory_w_rev * activate_inputs
-
-        # Reduce over dimension 1 (=source sensory neurons)
-        w_numerator_sensory = torch.sum(sensory_rev_activation, dim=1)
-        w_denominator_sensory = torch.sum(sensory_w_activation, dim=1)
+        input_dim = inputs.size(1)
         
         for t in range(self._ode_unfolds):
+            # concatenate state and inputs
+            x = torch.cat((inputs, v_pre), dim=1)
+            
             # [CAM/LUT] quantization inside the loop for v_pre
             if self.CAM_quantization is not None:
-                v_pre = self.ptq_cam(v_pre, n_bits=self.CAM_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name=f"v_pre_step{t}")
-            activate_v_pre = self._sigmoid(v_pre, self._params["mu"], self._params["sigma"])
+                x = self.ptq_cam(x, n_bits=self.CAM_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name=f"v_pre_step{t}")
+            
+            # slice x to states for sigmoid calculation
+            activate_x = self._sigmoid(x, concatenated_mu, concatenated_sigma)
+
             if self.LUT_quantization is not None:
-                activate_v_pre = self.ptq_lut(activate_v_pre, n_bits=self.LUT_quantization, name=f"w_activation_step{t}")
+                activate_x = self.ptq_lut(activate_x, n_bits=self.LUT_quantization, name=f"w_activation_step{t}")
+            
             # DAC quantization for state
             if self.DAC_quantization is not None:
-                activate_v_pre = self.ptq_range(activate_v_pre, n_bits=self.DAC_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name=(f"state_step{t}"))
+                activate_x = self.ptq_range(activate_x, n_bits=self.DAC_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name=(f"state_step{t}"))
 
             if self.digital_SRAM_quantization is not None:
                 state = self.ptq_range(state, n_bits=self.digital_SRAM_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name=(f"state"))
 
-            w_activation = w_param * activate_v_pre
-            rev_activation = w_rev * activate_v_pre
+            w_activation = concatenated_w * activate_x 
+            rev_activation = concatenated_w_rev * activate_x
 
             # Reduce over dimension 1 (=source neurons)
-            w_numerator = torch.sum(rev_activation, dim=1) + w_numerator_sensory
-            w_denominator = torch.sum(w_activation, dim=1) + w_denominator_sensory
+            w_numerator = torch.sum(rev_activation, dim=1) 
+            w_denominator = torch.sum(w_activation, dim=1)
 
             # for logging LUT activations distribution
             if self.calibration_path is not None:
-                self.dump_lut_values(v_pre, activate_v_pre, w_numerator, w_denominator, path=self.calibration_path, bins=100, append=True)
+                self.dump_lut_values(x, activate_x, w_numerator, w_denominator, path=self.calibration_path, bins=100, append=True)
 
             if self.ADC_quantization is not None:
                 w_numerator = self.ptq_range(w_numerator, n_bits=self.ADC_quantization, clip_min=self.clip_rev_sum_min, clip_max=self.clip_rev_sum_max, name=(f"w_numerator_step{t}"))
