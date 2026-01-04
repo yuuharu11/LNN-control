@@ -5,9 +5,9 @@ DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_3.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
 SEED=0
-high_quantize=(6 5 4)
-low_quantize=(5 4 3)
-CSV_BASE="/work/robomimic/csv/eval/lift/quantize/all/weight-6bit/ADC-8bit"
+high_quantize=(5)
+low_quantize=(6)
+CSV_BASE="/work/robomimic/csv/eval/lift/quantize/all/weight-5bit/ADC-8bit"
 LOG_PATH="/work/robomimic/logs/quantize/best/calibration/u64"
 mkdir -p ${CSV_BASE}
 # name と dataset_path の対応を associative array で定義
@@ -41,12 +41,12 @@ for name in "${!models[@]}"; do
               --calibration_percentile 99.9 \
               --digital_SRAM_quantization 8 \
               --digital_RRAM_quantization 8 \
-              --weight_quantization 6 \
+              --weight_quantization 5 \
               --LUT_quantization ${low_quantize} \
               --CAM_quantization ${high_quantize} \
               --ADC_quantization 8 \
               --DAC_quantization ${low_quantize} \
-              --csv_path "${CSV_BASE}/DAC-${low_quantize}bit/LUT-${low_quantize}bit/CAM-${high_quantize}bit/8-8/${units}.csv" 
+              --csv_path "${CSV_BASE}/DAC_LUT-${low_quantize}bit/CAM-${high_quantize}bit/8-8/${units}.csv" 
 
           echo "Completed: ${name} with ${quantize}-bit quantization"
           echo "----------------------------------------"

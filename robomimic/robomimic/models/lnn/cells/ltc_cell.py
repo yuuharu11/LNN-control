@@ -260,8 +260,6 @@ class LTCCell(SequenceModule):
         percentile: float = 0.999,
         name: Optional[str] = None,
         symmetric: bool = True,
-        gaussian: Optional[float] = 0.0,
-        shift: Optional[float] = 0.0,
     ):
         """
         PTQ for sparse weights with Noise Injection.
@@ -311,35 +309,6 @@ class LTCCell(SequenceModule):
                 scale = (max_val - min_val) / qmax
                 nz_q = torch.round((nz - min_val) / scale).clamp(0, qmax) * scale + min_val
 
-            # 4. Noise injection & ADC re-quantization (this is important!)
-            if gaussian is not None and gaussian > 0.0:
-                # Gaussian noise injection (Additive Noise: scaled by quantization step size)
-                noise = torch.randn_like(nz_q) * gaussian * scale
-                nz_q = nz_q + noise
-
-                if symmetric:
-                    nz_q = nz_q.clamp(-abs_max, abs_max) 
-                else:
-                    nz_q = nz_q.clamp(min_val, max_val)
-                
-                if getattr(self, "quantize_debug", False) and name:
-                     mode = "sym" if symmetric else "asym"
-                     print(f"[Quantize-Weight-{mode}-Gaussian] {name}: bits={n_bits} "
-                           f"p{percentile*100:.2f}% scale={scale:.3e}, gaussian={gaussian}")
-            elif shift is not None and shift != 0.0:
-                # Uniform shift noise injection
-                noise = shift * scale
-                nz_q = nz_q + noise
-
-                if getattr(self, "quantize_debug", False) and name:
-                     mode = "sym" if symmetric else "asym"
-                     print(f"[Quantize-Weight-{mode}-Shift] {name}: bits={n_bits} "
-                           f"p{percentile*100:.2f}% scale={scale:.3e}, shift={shift}")
-            else:
-                if getattr(self, "quantize_debug", False) and name:
-                     mode = "sym" if symmetric else "asym"
-                     print(f"[Quantize-Weight-{mode}] {name}: bits={n_bits} "
-                           f"p{percentile*100:.2f}% scale={scale:.3e}")
             # write back 
             out = x.clone()
             out[nz_mask] = nz_q
@@ -347,6 +316,18 @@ class LTCCell(SequenceModule):
 
         return params
     
+    # noise injection for weight
+    @torch.no_grad()
+    def injection_error(self, params: torch.Tensor, gaussian: float):
+        if gaussian is not None and gaussian > 0.0:
+            noise = torch.randn_like(params) * gaussian
+            params = params + noise
+            std_val = params.std().item()
+            print(f"[Injection-Error] Gaussian noise injection: std={gaussian:.3e}, result std={std_val:.3e}")
+        else:
+            print(f"[Injection-Error] No noise injected. std={params.std().item():.3e}")
+        return params
+
     @torch.no_grad()
     def ptq_range(
         self, 
@@ -532,8 +513,10 @@ class LTCCell(SequenceModule):
         )
         self._params["w_mask"] = self.add_vacant_weight("w_mask", self._params["w"].shape, requires_grad=False, persistent=False)
         self._params["sensory_w_mask"] = self.add_vacant_weight("sensory_w_mask", self._params["sensory_w"].shape, requires_grad=False, persistent=False)
+        self._params["concatenated_w"] = self.add_vacant_weight("concatenated_w", (self.sensory_size + self.state_size, self.state_size), requires_grad=False, persistent=False)
         self._params["w_rev"] = self.add_vacant_weight("w_rev", self._params["w"].shape, requires_grad=False, persistent=False)
         self._params["sensory_w_rev"] = self.add_vacant_weight("sensory_w_rev", self._params["sensory_w"].shape, requires_grad=False, persistent=False)
+        self._params["concatenated_w_rev"] = self.add_vacant_weight("concatenated_w_rev", (self.sensory_size + self.state_size, self.state_size), requires_grad=False, persistent=False)
 
         if self._input_mapping in ["affine", "linear"]:
             self._params["input_w"] = self.add_weight(
@@ -573,12 +556,18 @@ class LTCCell(SequenceModule):
         self._params["sensory_w_rev"].copy_(self._params["sensory_w_mask"] * self._params["sensory_erev"])
         
     def _weight_quantization(self, weight_quantization=None, gaussian: Optional[float] = None):
+        self._params["concatenated_w"] = torch.cat((self._params["sensory_w_mask"], self._params["w_mask"]), dim=0)
+        self._params["concatenated_w_rev"] = torch.cat((self._params["sensory_w_rev"], self._params["w_rev"]), dim=0)
         if weight_quantization is not None:
-            self._params["w_mask"].copy_(self.ptq_weight_nonzero(self._params["w_mask"], n_bits=weight_quantization, name="w", symmetric=False, gaussian=gaussian))
-            self._params["sensory_w_mask"].copy_(self.ptq_weight_nonzero(self._params["sensory_w_mask"], n_bits=weight_quantization, name="sensory_w", symmetric=False, gaussian=gaussian))
-            self._params["w_rev"].copy_(self.ptq_weight_nonzero(self._params["w_rev"], n_bits=weight_quantization, name="w_rev", symmetric=True, gaussian=gaussian))
-            self._params["sensory_w_rev"].copy_(self.ptq_weight_nonzero(self._params["sensory_w_rev"], n_bits=weight_quantization, name="sensory_w_rev", symmetric=True, gaussian=gaussian))
-            
+            self._params["concatenated_w"].copy(self.ptq_weight_nonzero(self._params["concatenated_w"], n_bits=weight_quantization, name="w", symmetric=False))
+            self._params["concatenated_w_rev"].copy_(self.ptq_weight_nonzero(self._params["concatenated_w_rev"], n_bits=weight_quantization, name="w_rev", symmetric=True))
+        elif gaussian is not None:
+            self._params["concatenated_w"].copy_(self.injection_error(self._params["concatenated_w"], gaussian))
+            self._params["concatenated_w_rev"].copy_(self.injection_error(self._params["concatenated_w_rev"], gaussian))
+        else:
+            self._params["concatenated_w"].copy_(self._params["concatenated_w"])
+            self._params["concatenated_w_rev"].copy_(self._params["concatenated_w_rev"])
+
     def _sigmoid(self, v_pre, mu, sigma):
         v_pre = torch.unsqueeze(v_pre, -1)  # For broadcasting
         mues = v_pre - mu
@@ -591,20 +580,14 @@ class LTCCell(SequenceModule):
         # cm/t is loop invariant
         cm_t = self._params["cm"] / (elapsed_time / self._ode_unfolds)
         # params
-        sensory_w_param = self._params["sensory_w_mask"]
-        w_param = self._params["w_mask"]
-        sensory_w_rev = self._params["sensory_w_rev"]
-        w_rev = self._params["w_rev"]
+        concatenated_w = self._params["concatenated_w"]
+        concatenated_w_rev = self._params["concatenated_w_rev"]
         gleak = self._params["gleak"]
         vleak = self._params["vleak"]
 
         # concatenate w and sensory_w, mu, sigma
-        concatenated_w = torch.cat((sensory_w_param, w_param), dim=0)
-        concatenated_w_rev = torch.cat((sensory_w_rev, w_rev), dim=0)
         concatenated_mu = torch.cat((self._params["sensory_mu"], self._params["mu"]), dim=0)
         concatenated_sigma = torch.cat((self._params["sensory_sigma"], self._params["sigma"]), dim=0)
-
-        input_dim = inputs.size(1)
         
         for t in range(self._ode_unfolds):
             # concatenate state and inputs
@@ -622,7 +605,7 @@ class LTCCell(SequenceModule):
             
             # DAC quantization for state
             if self.DAC_quantization is not None:
-                activate_x = self.ptq_range(activate_x, n_bits=self.DAC_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name=(f"state_step{t}"))
+                activate_x = self.ptq_lut(activate_x, n_bits=self.DAC_quantization, name=(f"state_step{t}"))
 
             if self.digital_SRAM_quantization is not None:
                 state = self.ptq_range(state, n_bits=self.digital_SRAM_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name=(f"state"))
