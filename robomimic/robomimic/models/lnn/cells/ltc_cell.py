@@ -318,15 +318,54 @@ class LTCCell(SequenceModule):
     
     # noise injection for weight
     @torch.no_grad()
-    def injection_error(self, params: torch.Tensor, gaussian: float):
-        if gaussian is not None and gaussian > 0.0:
-            noise = torch.randn_like(params) * gaussian
-            params = params + noise
-            std_val = params.std().item()
-            print(f"[Injection-Error] Gaussian noise injection: std={gaussian:.3e}, result std={std_val:.3e}")
+    def injection_error(
+        self,
+        params: torch.Tensor,
+        sigma: float,
+        symmetric: bool = True,
+        eps: float = 1e-12,
+    ):
+        if sigma is None or sigma <= 0.0:
+            return params
+
+        # -------------------------
+        # 1. 正規化スケール決定
+        # -------------------------
+        if symmetric:
+            # 正負を想定（-1 ～ +1）
+            scale = params.abs().max().clamp(min=eps)
+            w_norm = params / scale                      # [-1, +1]
         else:
-            print(f"[Injection-Error] No noise injected. std={params.std().item():.3e}")
-        return params
+            # 正のみ（0 ～ 1）
+            scale = params.max().clamp(min=eps)
+            w_norm = params / scale                      # [0, 1]
+
+        # -------------------------
+        # 2. 0 重みマスク
+        # -------------------------
+        mask = (w_norm != 0).float()
+
+        # -------------------------
+        # 3. 正規化空間で誤差注入
+        #    (normalized step error)
+        # -------------------------
+        noise = torch.randn_like(w_norm) * sigma
+        w_norm_noisy = w_norm + noise * mask
+
+        # -------------------------
+        # 4. 正規化空間でクリップ
+        # -------------------------
+        if symmetric:
+            w_norm_noisy = torch.clamp(w_norm_noisy, -1.0, 1.0)
+        else:
+            w_norm_noisy = torch.clamp(w_norm_noisy, 0.0, 1.0)
+
+        # -------------------------
+        # 5. 元スケールへ復元
+        # -------------------------
+        params_noisy = w_norm_noisy * scale
+
+        return params_noisy
 
     @torch.no_grad()
     def ptq_range(
@@ -561,12 +600,9 @@ class LTCCell(SequenceModule):
         if weight_quantization is not None:
             self._params["concatenated_w"].copy(self.ptq_weight_nonzero(self._params["concatenated_w"], n_bits=weight_quantization, name="w", symmetric=False))
             self._params["concatenated_w_rev"].copy_(self.ptq_weight_nonzero(self._params["concatenated_w_rev"], n_bits=weight_quantization, name="w_rev", symmetric=True))
-        elif gaussian is not None:
-            self._params["concatenated_w"].copy_(self.injection_error(self._params["concatenated_w"], gaussian))
-            self._params["concatenated_w_rev"].copy_(self.injection_error(self._params["concatenated_w_rev"], gaussian))
-        else:
-            self._params["concatenated_w"].copy_(self._params["concatenated_w"])
-            self._params["concatenated_w_rev"].copy_(self._params["concatenated_w_rev"])
+        if gaussian is not None:
+            self._params["concatenated_w"].copy_(self.injection_error(self._params["concatenated_w"], sigma=gaussian, symmetric=False))
+            self._params["concatenated_w_rev"].copy_(self.injection_error(self._params["concatenated_w_rev"], sigma=gaussian, symmetric=True))
 
     def _sigmoid(self, v_pre, mu, sigma):
         v_pre = torch.unsqueeze(v_pre, -1)  # For broadcasting

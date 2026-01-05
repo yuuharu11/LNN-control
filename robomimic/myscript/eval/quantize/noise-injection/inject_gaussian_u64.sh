@@ -39,7 +39,7 @@ for name in "${!models[@]}"; do
           --calibration_path "${LOG_PATH}/Seed${seed}.json" \
           --calibration_percentile 99.9 \
           --gaussian "${g}" \
-          --csv_path "${CSV_BASE}${units}_gaussian${g}.csv" 
+          --csv_path "${CSV_BASE}${units}/gaussian${g}.csv" 
 
       echo "Completed: ${name} with ${quantize}-bit quantization"
       echo "----------------------------------------"
