@@ -5,9 +5,8 @@ DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_3.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
 SEED=0
-gaussian=(0.0 0.01 0.02 0.03 0.04 0.05)
-CSV_BASE="/work/robomimic/csv/eval/lift/error/gaussian/"
-LOG_PATH="/work/robomimic/logs/quantize/gaussian/calibration/u128"
+shift=(0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.10)
+CSV_BASE="/work/robomimic/csv/eval/lift/error/shift/"
 mkdir -p ${CSV_BASE}
 
 # name と dataset_path の対応を associative array で定義
@@ -27,22 +26,18 @@ for name in "${!models[@]}"; do
   units=$(echo "${model_path}" | grep -o 'unit[0-9]\+')
   units=${units:-unit_unknown}
   seed=${name##*_seed}
-  for g in "${gaussian[@]}"; do
-      echo "Running inference for ${name} with 6bit 4bit quantization with Gaussian noise stddev=${g}..."
+  for g in "${shift[@]}"; do
+      echo "Running inference with shift noise stddev=${g}..."
       python /work/robomimic/robomimic/scripts/run_trained_agent.py \
           --agent "${model_path}" \
           --n_rollouts "${N_ROLLOUTS}" \
           --horizon "${HORIZON}" \
           --seed "${SEED}" \
           --dataset_path "${DATASET_PATH}" \
-          --name "${name}_gaussian${g}" \
-          --calibration_times 3 \
-          --calibration_path "${LOG_PATH}/Seed${seed}.json" \
-          --calibration_percentile 99.9 \
-          --gaussian "${g}" \
-          --csv_path "${CSV_BASE}${units}/gaussian${g}.csv" 
+          --name "${name}_shift${g}" \
+          --shift "${g}" \
+          --csv_path "${CSV_BASE}${units}/shift${g}.csv" 
 
-      echo "Completed: ${name} with ${quantize}-bit quantization"
       echo "----------------------------------------"
   done
     echo "Completed: ${name}"

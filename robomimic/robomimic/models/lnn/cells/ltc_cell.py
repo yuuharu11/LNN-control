@@ -44,6 +44,7 @@ class LTCCell(SequenceModule):
         DAC_quantization: Optional[int] = None,
         calibration_path: Optional[str] = None,
         gaussian: Optional[float] = None,
+        shift: Optional[float] = None,
         log_path: Optional[str] = None,
     ):
         """A `Liquid time-constant (LTC) <https://ojs.aaai.org/index.php/AAAI/article/view/16936>`_ cell.
@@ -321,39 +322,43 @@ class LTCCell(SequenceModule):
     def injection_error(
         self,
         params: torch.Tensor,
-        sigma: float,
+        sigma: float = 0.0,       
+        shift: float = 0.0,  
         symmetric: bool = True,
         eps: float = 1e-12,
     ):
-        if sigma is None or sigma <= 0.0:
+        if (sigma is None or sigma <= 0.0) and (shift == 0.0):
             return params
 
         # -------------------------
         # 1. 正規化スケール決定
         # -------------------------
         if symmetric:
-            # 正負を想定（-1 ～ +1）
             scale = params.abs().max().clamp(min=eps)
-            w_norm = params / scale                      # [-1, +1]
+            w_norm = params / scale
         else:
-            # 正のみ（0 ～ 1）
             scale = params.max().clamp(min=eps)
-            w_norm = params / scale                      # [0, 1]
+            w_norm = params / scale
 
         # -------------------------
-        # 2. 0 重みマスク
+        # 2. 0 重みマスク（0の部分には誤差を乗せない）
         # -------------------------
         mask = (w_norm != 0).float()
 
         # -------------------------
         # 3. 正規化空間で誤差注入
-        #    (normalized step error)
         # -------------------------
+        # ガウス誤差（ランダムなバラツキ）
         noise = torch.randn_like(w_norm) * sigma
-        w_norm_noisy = w_norm + noise * mask
+        
+        # シフトエラー（一定方向へのズレ） 
+        # すべての重みを一律に shift 分だけ動かす
+        offset = shift * mask 
+
+        w_norm_noisy = w_norm + (noise + offset) * mask
 
         # -------------------------
-        # 4. 正規化空間でクリップ
+        # 4. 正規化空間でクリップ（範囲外を丸める）
         # -------------------------
         if symmetric:
             w_norm_noisy = torch.clamp(w_norm_noisy, -1.0, 1.0)
@@ -365,7 +370,7 @@ class LTCCell(SequenceModule):
         # -------------------------
         params_noisy = w_norm_noisy * scale
 
-        print(f"[Injection-Error] sigma={sigma}, scale={scale.item():.3e}, w_std={w_norm.std().item():.3e}, w_noisy_std={w_norm_noisy.std().item():.3e}")
+        print(f"[Injection-Error] sigma={sigma}, shift={shift}, scale={scale.item():.3e}")
 
         return params_noisy
 
@@ -596,7 +601,7 @@ class LTCCell(SequenceModule):
         self._params["w_rev"].copy_(self._params["w_mask"] * self._params["erev"])
         self._params["sensory_w_rev"].copy_(self._params["sensory_w_mask"] * self._params["sensory_erev"])
         
-    def _weight_quantization(self, weight_quantization=None, gaussian: Optional[float] = None):
+    def _weight_quantization(self, weight_quantization=None, gaussian: Optional[float] = None, shift: Optional[float] = None):
         self._params["concatenated_w"] = torch.cat((self._params["sensory_w_mask"], self._params["w_mask"]), dim=0)
         self._params["concatenated_w_rev"] = torch.cat((self._params["sensory_w_rev"], self._params["w_rev"]), dim=0)
         if weight_quantization is not None:
@@ -605,6 +610,9 @@ class LTCCell(SequenceModule):
         if gaussian is not None:
             self._params["concatenated_w"].copy_(self.injection_error(self._params["concatenated_w"], sigma=gaussian, symmetric=False))
             self._params["concatenated_w_rev"].copy_(self.injection_error(self._params["concatenated_w_rev"], sigma=gaussian, symmetric=True))
+        elif shift is not None:
+            self._params["concatenated_w"].copy_(self.injection_error(self._params["concatenated_w"], shift=shift, symmetric=False))
+            self._params["concatenated_w_rev"].copy_(self.injection_error(self._params["concatenated_w_rev"], shift=shift, symmetric=True))
 
     def _sigmoid(self, v_pre, mu, sigma):
         v_pre = torch.unsqueeze(v_pre, -1)  # For broadcasting

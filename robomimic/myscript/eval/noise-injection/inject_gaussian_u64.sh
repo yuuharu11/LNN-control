@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # モデルファイルと共通パラメータ
-DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_5.hdf5"
+DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_4.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
 SEED=0
-gaussian=(0.05 0.1 0.15 0.2 0.25 0.3)
+gaussian=(0.11 0.12 0.13 0.14 0.15)
 CSV_BASE="/work/robomimic/csv/eval/lift/error/gaussian/"
 LOG_PATH="/work/robomimic/logs/quantize/gaussian/calibration/u64"
 mkdir -p ${CSV_BASE}

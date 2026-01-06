@@ -1,22 +1,22 @@
 #!/bin/bash
 
 # モデルファイルと共通パラメータ
-DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_2.hdf5"
+DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_3.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
 SEED=0
-gaussian=(0.0 0.01 0.02 0.03 0.04 0.05)
+gaussian=(0.11 0.12 0.13 0.14 0.15)
 CSV_BASE="/work/robomimic/csv/eval/lift/error/gaussian/"
-LOG_PATH="/work/robomimic/logs/quantize/gaussian/calibration/u256"
+LOG_PATH="/work/robomimic/logs/quantize/gaussian/calibration/u128"
 mkdir -p ${CSV_BASE}
 
 # name と dataset_path の対応を associative array で定義
 declare -A models=(
-  ["ncp_u256_best_seed1"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed1/models/model_epoch_150_low_dim_v15_success_1.0.pth"
-  ["ncp_u256_best_seed2"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed2/models/model_epoch_50_low_dim_v15_success_1.0.pth"
-  ["ncp_u256_best_seed3"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed3/models/model_epoch_150_low_dim_v15_success_1.0.pth"
-  ["ncp_u256_best_seed4"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed4/models/model_epoch_350_low_dim_v15_success_1.0.pth"
-  ["ncp_u256_best_seed5"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed5/models/model_epoch_200_low_dim_v15_success_1.0.pth"
+  ["ncp_u128_best_seed1"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit128/seed1/models/model_epoch_100_low_dim_v15_success_1.0.pth"
+  ["ncp_u128_best_seed2"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit128/seed2/models/model_epoch_450_low_dim_v15_success_1.0.pth"
+  ["ncp_u128_best_seed3"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit128/seed3/models/model_epoch_150_low_dim_v15_success_1.0.pth"
+  ["ncp_u128_best_seed4"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit128/seed4/models/model_epoch_150_low_dim_v15_success_1.0.pth"
+  ["ncp_u128_best_seed5"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit128/seed5/models/model_epoch_300_low_dim_v15_success_1.0.pth"
   )
 
 # 各データセットに対して逐次推論を実行
