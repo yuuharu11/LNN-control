@@ -1,22 +1,22 @@
 #!/bin/bash
 
 # モデルファイルと共通パラメータ
-DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_2.hdf5"
+DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_5.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
 SEED=0
-gaussian=(0.0 0.01 0.02 0.03 0.04 0.05)
+gaussian=(0.05 0.1 0.15 0.2 0.25 0.3)
 CSV_BASE="/work/robomimic/csv/eval/lift/error/gaussian/"
-LOG_PATH="/work/robomimic/logs/quantize/gaussian/calibration/u256"
+LOG_PATH="/work/robomimic/logs/quantize/gaussian/calibration/u64"
 mkdir -p ${CSV_BASE}
 
 # name と dataset_path の対応を associative array で定義
 declare -A models=(
-  ["ncp_u256_best_seed1"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed1/models/model_epoch_150_low_dim_v15_success_1.0.pth"
-  ["ncp_u256_best_seed2"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed2/models/model_epoch_50_low_dim_v15_success_1.0.pth"
-  ["ncp_u256_best_seed3"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed3/models/model_epoch_150_low_dim_v15_success_1.0.pth"
-  ["ncp_u256_best_seed4"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed4/models/model_epoch_350_low_dim_v15_success_1.0.pth"
-  ["ncp_u256_best_seed5"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed5/models/model_epoch_200_low_dim_v15_success_1.0.pth"
+  ["ncp_u64_best_seed1"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit64/seed1/models/model_epoch_250_low_dim_v15_success_1.0.pth"
+  ["ncp_u64_best_seed2"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit64/seed2/models/model_epoch_150_low_dim_v15_success_0.96.pth"
+  ["ncp_u64_best_seed3"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit64/seed3/models/model_epoch_350_low_dim_v15_success_1.0.pth"
+  ["ncp_u64_best_seed4"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit64/seed4/models/model_epoch_350_low_dim_v15_success_0.96.pth"
+  ["ncp_u64_best_seed5"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit64/seed5/models/model_epoch_400_low_dim_v15_success_0.96.pth"
   )
 
 # 各データセットに対して逐次推論を実行
@@ -28,7 +28,6 @@ for name in "${!models[@]}"; do
   units=${units:-unit_unknown}
   seed=${name##*_seed}
   for g in "${gaussian[@]}"; do
-      echo "Running inference for ${name} with 6bit 4bit quantization with Gaussian noise stddev=${g}..."
       python /work/robomimic/robomimic/scripts/run_trained_agent.py \
           --agent "${model_path}" \
           --n_rollouts "${N_ROLLOUTS}" \

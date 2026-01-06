@@ -365,6 +365,8 @@ class LTCCell(SequenceModule):
         # -------------------------
         params_noisy = w_norm_noisy * scale
 
+        print(f"[Injection-Error] sigma={sigma}, scale={scale.item():.3e}, w_std={w_norm.std().item():.3e}, w_noisy_std={w_norm_noisy.std().item():.3e}")
+
         return params_noisy
 
     @torch.no_grad()
