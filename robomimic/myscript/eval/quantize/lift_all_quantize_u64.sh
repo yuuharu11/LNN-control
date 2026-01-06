@@ -5,8 +5,6 @@ DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_3.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
 SEED=0
-high_quantize=(5)
-low_quantize=(6)
 CSV_BASE="/work/robomimic/csv/eval/lift/quantize/all/weight-5bit/ADC-8bit"
 LOG_PATH="/work/robomimic/logs/quantize/best/calibration/u64"
 mkdir -p ${CSV_BASE}

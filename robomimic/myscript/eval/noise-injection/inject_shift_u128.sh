@@ -5,7 +5,7 @@ DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_3.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
 SEED=0
-shift=(0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.10)
+shift=(0.0 0.003 0.006 0.009 0.012 0.015 0.018 0.021 0.024 0.027 0.03)
 CSV_BASE="/work/robomimic/csv/eval/lift/error/shift/"
 mkdir -p ${CSV_BASE}
 

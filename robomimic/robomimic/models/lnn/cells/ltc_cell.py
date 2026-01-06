@@ -369,7 +369,7 @@ class LTCCell(SequenceModule):
         # 5. 元スケールへ復元
         # -------------------------
         params_noisy = w_norm_noisy * scale
-
+        
         print(f"[Injection-Error] sigma={sigma}, shift={shift}, scale={scale.item():.3e}")
 
         return params_noisy
