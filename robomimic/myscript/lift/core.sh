@@ -36,7 +36,7 @@ for config_spec in "${LIFT_CONFIGS[@]}"; do
     DATASET_TYPE=$(echo "$DATASET" | cut -d'/' -f2)
 
     WANDB_NAME="${MODEL}_${DATASET_TYPE}_seed1"
-    EXP_NAME="/work/robomimic/bc_trained_models/lift/${MODEL}-pure/${DATASET_TYPE}/seed1"
+    EXP_NAME="/work/robomimic/bc_trained_models/lift/${MODEL}-pure/${DATASET_TYPE}/seed"
 
     CONFIG_PATH="/work/robomimic/robomimic/exps/my_params/lift/${MODEL}.json"
     

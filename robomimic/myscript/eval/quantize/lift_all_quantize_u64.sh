@@ -39,12 +39,12 @@ for name in "${!models[@]}"; do
               --calibration_percentile 99.9 \
               --digital_SRAM_quantization 8 \
               --digital_RRAM_quantization 8 \
-              --weight_quantization 5 \
-              --LUT_quantization ${low_quantize} \
-              --CAM_quantization ${high_quantize} \
+              --weight_quantization 8 \
+              --LUT_quantization  8 \
+              --CAM_quantization 8 \
               --ADC_quantization 8 \
-              --DAC_quantization ${low_quantize} \
-              --csv_path "${CSV_BASE}/DAC_LUT-${low_quantize}bit/CAM-${high_quantize}bit/8-8/${units}.csv" 
+              --DAC_quantization 8 \
+              --csv_path "${CSV_BASE}/DAC_LUT-8bit/CAM-8bit/8-8/${units}.csv" 
 
           echo "Completed: ${name} with ${quantize}-bit quantization"
           echo "----------------------------------------"
