@@ -2,11 +2,11 @@
 
 # モデルファイルと共通パラメータ
 DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_3.hdf5"
-N_ROLLOUTS=100
+N_ROLLOUTS=3
 HORIZON=400
 SEED=0
 QUANTIZES=(7 5 1)
-CSV_BASE="/work/robomimic/csv/eval/lift/quantize/LUT/"
+CSV_BASE="/work/robomimic/csv/eval/lift/quantize/LUT/temp"
 mkdir -p ${CSV_BASE}
 
 # name と dataset_path の対応を associative array で定義

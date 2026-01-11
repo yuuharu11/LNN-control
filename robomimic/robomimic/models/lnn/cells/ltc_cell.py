@@ -44,7 +44,6 @@ class LTCCell(SequenceModule):
         DAC_quantization: Optional[int] = None,
         calibration_path: Optional[str] = None,
         gaussian: Optional[float] = None,
-        shift: Optional[float] = None,
         log_path: Optional[str] = None,
     ):
         """A `Liquid time-constant (LTC) <https://ojs.aaai.org/index.php/AAAI/article/view/16936>`_ cell.
@@ -319,60 +318,12 @@ class LTCCell(SequenceModule):
     
     # noise injection for weight
     @torch.no_grad()
-    def injection_error(
-        self,
-        params: torch.Tensor,
-        sigma: float = 0.0,       
-        shift: float = 0.0,  
-        symmetric: bool = True,
-        eps: float = 1e-12,
-    ):
-        if (sigma is None or sigma <= 0.0) and (shift == 0.0):
-            return params
-
-        # -------------------------
-        # 1. 正規化スケール決定
-        # -------------------------
-        if symmetric:
-            scale = params.abs().max().clamp(min=eps)
-            w_norm = params / scale
-        else:
-            scale = params.max().clamp(min=eps)
-            w_norm = params / scale
-
-        # -------------------------
-        # 2. 0 重みマスク（0の部分には誤差を乗せない）
-        # -------------------------
-        mask = (w_norm != 0).float()
-
-        # -------------------------
-        # 3. 正規化空間で誤差注入
-        # -------------------------
-        # ガウス誤差（ランダムなバラツキ）
-        noise = torch.randn_like(w_norm) * sigma
-        
-        # シフトエラー（一定方向へのズレ） 
-        # すべての重みを一律に shift 分だけ動かす
-        offset = shift * mask 
-
-        w_norm_noisy = w_norm + (noise + offset) * mask
-
-        # -------------------------
-        # 4. 正規化空間でクリップ（範囲外を丸める）
-        # -------------------------
-        if symmetric:
-            w_norm_noisy = torch.clamp(w_norm_noisy, -1.0, 1.0)
-        else:
-            w_norm_noisy = torch.clamp(w_norm_noisy, 0.0, 1.0)
-
-        # -------------------------
-        # 5. 元スケールへ復元
-        # -------------------------
-        params_noisy = w_norm_noisy * scale
-        
-        print(f"[Injection-Error] sigma={sigma}, shift={shift}, scale={scale.item():.3e}")
-
-        return params_noisy
+    def injection_error(self, params: torch.Tensor, gaussian: float):
+        if gaussian is not None and gaussian > 0.0:
+            noise = torch.randn_like(params) * gaussian
+            params = params + noise
+        print("[Injection-Error] Gaussian noise injection: std={:.3e},  ".format(gaussian), params.std().item())
+        return params
 
     @torch.no_grad()
     def ptq_range(
@@ -600,12 +551,12 @@ class LTCCell(SequenceModule):
         self._params["sensory_w_mask"].copy_(self._params["sensory_w"] * self._params["sensory_sparsity_mask"])
         self._params["w_rev"].copy_(self._params["w_mask"] * self._params["erev"])
         self._params["sensory_w_rev"].copy_(self._params["sensory_w_mask"] * self._params["sensory_erev"])
-        
-    def _weight_quantization(self, weight_quantization=None, gaussian: Optional[float] = None, shift: Optional[float] = None):
         self._params["concatenated_w"] = torch.cat((self._params["sensory_w_mask"], self._params["w_mask"]), dim=0)
         self._params["concatenated_w_rev"] = torch.cat((self._params["sensory_w_rev"], self._params["w_rev"]), dim=0)
+        
+    def _weight_quantization(self, weight_quantization=None, gaussian: Optional[float] = None, shift: Optional[float] = None):
         if weight_quantization is not None:
-            self._params["concatenated_w"].copy(self.ptq_weight_nonzero(self._params["concatenated_w"], n_bits=weight_quantization, name="w", symmetric=False))
+            self._params["concatenated_w"].copy_(self.ptq_weight_nonzero(self._params["concatenated_w"], n_bits=weight_quantization, name="w", symmetric=False))
             self._params["concatenated_w_rev"].copy_(self.ptq_weight_nonzero(self._params["concatenated_w_rev"], n_bits=weight_quantization, name="w_rev", symmetric=True))
         if gaussian is not None:
             self._params["concatenated_w"].copy_(self.injection_error(self._params["concatenated_w"], sigma=gaussian, symmetric=False))
@@ -621,6 +572,7 @@ class LTCCell(SequenceModule):
         return torch.sigmoid(x)
 
     def _ode_solver(self, inputs, state, elapsed_time):
+        # state is fixed
         v_pre = state
         
         # cm/t is loop invariant
@@ -665,7 +617,8 @@ class LTCCell(SequenceModule):
 
             # for logging LUT activations distribution
             if self.calibration_path is not None:
-                self.dump_lut_values(x, activate_x, w_numerator, w_denominator, path=self.calibration_path, bins=100, append=True)
+                if np.random.random() < 0.01:  # log 1% of steps
+                    self.dump_lut_values(x, activate_x, w_denominator, w_numerator, path=self.calibration_path, bins=100, append=True)
 
             if self.ADC_quantization is not None:
                 w_numerator = self.ptq_range(w_numerator, n_bits=self.ADC_quantization, clip_min=self.clip_rev_sum_min, clip_max=self.clip_rev_sum_max, name=(f"w_numerator_step{t}"))

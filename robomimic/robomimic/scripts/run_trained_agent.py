@@ -466,6 +466,7 @@ def calibrate_states_observation(policy, env, rollout_horizon, args, write_datas
         return x_lo, x_hi, rev_sum_lo, rev_sum_hi, w_sum_lo, w_sum_hi
     else:
         for i in range(calibration_times):
+            print(f"[Calibrate] Running calibration rollout {i+1}/{calibration_times}...")
             rollout(
                 policy=policy, 
                 env=env, 

@@ -1,26 +1,26 @@
 #!/bin/bash
 set -euo pipefail
 
-# ===== Lift Task with Multiple Seeds & W&B Logging (Parallel) =====
-WANDB_PROJECT="robomimic_lift"
+# ===== Can Task with Multiple Seeds & W&B Logging (Parallel) =====
+WANDB_PROJECT="robomimic_can"
 MAX_JOBS="${MAX_JOBS:-10}"   # 同時実行数（例: MAX_JOBS=4 ./core.sh）
 
-echo "Lift Task Training with Multiple Seeds (Parallel)"
+echo "Can Task Training with Multiple Seeds (Parallel)"
 echo "Project: ${WANDB_PROJECT}"
 echo "MAX_JOBS: ${MAX_JOBS}"
 echo ""
 
-# ===== Lift 設定リスト =====
-declare -a LIFT_CONFIGS=(
-  "bc:lift/ph/low_dim"
-  "bc_rnn:lift/ph/low_dim"
+# ===== Can 設定リスト =====
+declare -a CAN_CONFIGS=(
+  "bc:can/ph/low_dim"
+  "bc_rnn:can/ph/low_dim"
 )
 
 # seed をループ
 SEEDS=(4 5 6 7 8 9 10)
 
-TOTAL=$(( ${#LIFT_CONFIGS[@]} * ${#SEEDS[@]} ))
-echo "Total runs: ${TOTAL} (configs=${#LIFT_CONFIGS[@]} x seeds=${#SEEDS[@]})"
+TOTAL=$(( ${#CAN_CONFIGS[@]} * ${#SEEDS[@]} ))
+echo "Total runs: ${TOTAL} (configs=${#CAN_CONFIGS[@]} x seeds=${#SEEDS[@]})"
 echo ""
 
 COMPLETED=0
@@ -49,8 +49,8 @@ run_one() {
   mdir="$(model_dir "$model")"
 
   local wandb_name="${model}_${dataset_type}_seed${seed}"
-  local exp_name="/work/robomimic/bc_trained_models/lift/${mdir}/${dataset_type}/seed${seed}"
-  local config_path="/work/robomimic/robomimic/exps/my_params/lift/${model}.json"
+  local exp_name="/work/robomimic/bc_trained_models/can/${mdir}/${dataset_type}/seed${seed}"
+  local config_path="/work/robomimic/robomimic/exps/my_params/can/${model}.json"
 
   echo "[RUN] ${wandb_name}"
   echo "      Config: ${config_path}"
@@ -59,9 +59,6 @@ run_one() {
   python /work/robomimic/robomimic/scripts/train.py \
     --config "${config_path}" \
     --name "${exp_name}" \
-    --wandb_project "${WANDB_PROJECT}" \
-    --wandb_name "${wandb_name}" \
-    --wandb \
     --seed "${seed}" \
     --num_epochs 1000
 }
@@ -81,7 +78,7 @@ wait_one_and_count() {
 }
 
 # ===== 並列実行（スロットリング）=====
-for config_spec in "${LIFT_CONFIGS[@]}"; do
+for config_spec in "${CAN_CONFIGS[@]}"; do
   MODEL="${config_spec%:*}"
   DATASET="${config_spec#*:}"
 
