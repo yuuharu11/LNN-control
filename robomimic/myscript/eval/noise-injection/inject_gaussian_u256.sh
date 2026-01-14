@@ -1,54 +1,38 @@
 #!/bin/bash
 
 # モデルファイルと共通パラメータ
-DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_2.hdf5"
+DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_5.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
-SEED=0
-gaussian=(0.11 0.12 0.13 0.14 0.15)
+SEED=1
+gaussian=(0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.10)
 CSV_BASE="/work/robomimic/csv/eval/lift/error/gaussian/"
 LOG_PATH="/work/robomimic/logs/quantize/gaussian/calibration/u256"
 mkdir -p ${CSV_BASE}
-
-# name と dataset_path の対応を associative array で定義
-declare -A models=(
-  ["ncp_u256_best_seed1"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed1/models/model_epoch_150_low_dim_v15_success_1.0.pth"
-  ["ncp_u256_best_seed2"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed2/models/model_epoch_50_low_dim_v15_success_1.0.pth"
-  ["ncp_u256_best_seed3"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed3/models/model_epoch_150_low_dim_v15_success_1.0.pth"
-  ["ncp_u256_best_seed4"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed4/models/model_epoch_350_low_dim_v15_success_1.0.pth"
-  ["ncp_u256_best_seed5"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit256/seed5/models/model_epoch_200_low_dim_v15_success_1.0.pth"
-  )
-
-# 各データセットに対して逐次推論を実行
-for name in "${!models[@]}"; do
-  model_path="${models[$name]}"
-
-  # unitsの抽出
-  units=$(echo "${model_path}" | grep -o 'unit[0-9]\+')
-  units=${units:-unit_unknown}
-  seed=${name##*_seed}
+MODEL_DIR="/work/robomimic/trained_models/lift/u256"
+seed=0
+for model_path in ${MODEL_DIR}/seed*_model_epoch_*_low_dim_v15_success_*; do
   for g in "${gaussian[@]}"; do
-      echo "Running inference for ${name} with 6bit 4bit quantization with Gaussian noise stddev=${g}..."
+    if [[ -f "$model_path" ]]; then
+      name="u256_${seed}"
+      units="unit256"
+      echo "Running inference for ${name}..."
       python /work/robomimic/robomimic/scripts/run_trained_agent.py \
-          --agent "${model_path}" \
-          --n_rollouts "${N_ROLLOUTS}" \
-          --horizon "${HORIZON}" \
-          --seed "${SEED}" \
-          --dataset_path "${DATASET_PATH}" \
-          --name "${name}_gaussian${g}" \
-          --calibration_times 3 \
-          --calibration_path "${LOG_PATH}/Seed${seed}.json" \
-          --calibration_percentile 99.9 \
-          --gaussian "${g}" \
-          --csv_path "${CSV_BASE}${units}/gaussian${g}.csv" 
-
-      echo "Completed: ${name} with ${quantize}-bit quantization"
+        --agent "$model_path" \
+        --n_rollouts "$N_ROLLOUTS" \
+        --horizon "$HORIZON" \
+        --seed "$SEED" \
+        --dataset_path "$DATASET_PATH" \
+        --name "${name}_gaussian${g}" \
+        --gaussian "${g}" \
+        --csv_path "${CSV_BASE}${units}/gaussian${g}.csv" 
+      echo "Completed: ${name}"
       echo "----------------------------------------"
+    fi
   done
-    echo "Completed: ${name}"
-    echo "----------------------------------------"
+  seed=$((seed + 1))
 done
 echo "=========================================="
 echo "All experiments completed!"
-echo "Results saved in ${CSV_DIR}"
+echo "Results saved in ${CSV_BASE}"
 echo "=========================================="

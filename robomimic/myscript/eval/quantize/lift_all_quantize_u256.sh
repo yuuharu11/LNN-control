@@ -5,7 +5,7 @@ DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_5.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
 SEED=0
-CSV_BASE="/work/robomimic/csv/eval/lift/quantize/proposal"
+CSV_BASE="/work/robomimic/csv/eval/lift/quantize/proposal-new"
 LOG_PATH="/work/robomimic/logs/quantize/best/calibration/u256"
 mkdir -p ${CSV_BASE}
 MODEL_DIR="/work/robomimic/trained_models/lift/u256"
@@ -31,7 +31,7 @@ for model_path in ${MODEL_DIR}/seed*_model_epoch_*_low_dim_v15_success_*; do
       --digital_RRAM_quantization 8 \
       --weight_quantization 5 \
       --LUT_quantization 5 \
-      --CAM_quantization 5 \
+      --CAM_quantization 6 \
       --ADC_quantization 5 \
       --DAC_quantization 8 \
       --csv_path "$CSV_BASE/${units}.csv"
