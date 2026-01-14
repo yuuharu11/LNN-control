@@ -348,17 +348,37 @@ class LTCCell(SequenceModule):
         # ------------------------- 
         # ガウス誤差（ランダムなバラツキ） 
         noise = torch.randn_like(w_norm) * sigma 
+
         # シフトエラー（一定方向へのズレ） 
         # すべての重みを一律に shift 分だけ動かす 
         offset = shift * mask 
-        w_norm_noisy = w_norm + (noise + offset) * mask 
 
         # ------------------------- 
-        # 4. 正規化空間でクリップ（範囲外を丸める） 
+        # 4. 正規化空間でエラー注入＆クリップ（範囲外を丸める） 
         # ------------------------- 
         if symmetric: 
-            w_norm_noisy = torch.clamp(w_norm_noisy, -1.0, 1.0) 
+            # エラー注入
+            
+            # 1. 重みの符号を取得 (正: 1, 負: -1, 0: 0)
+            w_sign = torch.sign(w_norm)
+            
+            # 2. ノイズの適用（常に0の方向へずらす）
+            #    元の式: w_norm - (大きさ * 符号)
+            #    正の時: w - (正の値) -> 小さくなる
+            #    負の時: w - (負の値) -> w + 正の値 -> 0に近づく
+            decay_amount = (noise + offset) * mask
+            w_norm_noisy = w_norm - (decay_amount * w_sign)
+            
+            # 3. 符号反転（0またぎ）の防止
+            #    「元の符号」と「ノイズ後の符号」が異なるとき、行き過ぎたとみなして0にする
+            #    (0.1 が -0.05 になったら 0 にする)
+            sign_changed = (w_sign * torch.sign(w_norm_noisy)) < 0
+            w_norm_noisy[sign_changed] = 0.0
+
+            # 4. 範囲クリッピング
+            w_norm_noisy = torch.clamp(w_norm_noisy, -1.0, 1.0)
         else: 
+            w_norm_noisy = w_norm + (noise - offset) * mask 
             w_norm_noisy = torch.clamp(w_norm_noisy, 0.0, 1.0) 
 
         # ------------------------- 
