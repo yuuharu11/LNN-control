@@ -1,48 +1,60 @@
 #!/bin/bash
 
-# モデルファイルと共通パラメータ
-DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_3.hdf5"
+# 共通パラメータ
+DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_6.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
 SEED=0
-QUANTIZES=(8 7 6 5 4 3 2 1)
-CSV_BASE="/work/robomimic/csv/eval/lift/quantize/CAM/calibration/"
-LOG_PATH="/work/robomimic/logs/quantize/best/calibration/"
-mkdir -p ${CSV_BASE}
 
-declare -A models=(
-  ["ncp_u64_best_seed4"]="/work/robomimic/bc_trained_models/lift/ncp-pure-best/ph/unit64/seed4/models/model_epoch_350_low_dim_v15_success_0.96.pth"
-  )
-# 各データセットに対して逐次推論を実行
-for name in "${!models[@]}"; do
-  model_path="${models[$name]}"
+UNITS_LIST=(64 128 256)
+QUANTIZES=(1 2 3 4 5 6 7 8)
 
-  # unitsの抽出
-  units=$(echo "${model_path}" | grep -o 'unit[0-9]\+' | grep -o '[0-9]\+')
-  units=${units:-unit_unknown}
-  seed=${name##*_seed}
-  for quantize in "${QUANTIZES[@]}"; do
-      echo "Running inference for ${name} with ${quantize}-bit quantization..."
-      python /work/robomimic/robomimic/scripts/run_trained_agent.py \
-          --agent "${model_path}" \
-          --n_rollouts "${N_ROLLOUTS}" \
-          --horizon "${HORIZON}" \
-          --seed "${SEED}" \
+for quantize_bit in "${QUANTIZES[@]}"; do
+  echo "=========================================="
+  echo "Running experiments for quantize bit: ${quantize_bit}"
+  echo "=========================================="
+
+  for U in "${UNITS_LIST[@]}"; do
+    echo "=========================================="
+    echo "Running experiments for unit${U}"
+    echo "=========================================="
+
+    CSV_BASE="/work/robomimic/csv/result/lift/quantize/CAM/unit${U}/"
+    mkdir -p ${CSV_BASE}
+    MODEL_DIR="/work/robomimic/trained_models/lift/u${U}"
+    LOG_PATH="/work/robomimic/logs/quantize/best/calibration/u${U}"
+    units="unit${U}"
+    seed=0
+
+    for model_path in ${MODEL_DIR}/seed*_model_epoch_*_low_dim_v15_success_*; do
+      if [[ -f "$model_path" ]]; then
+        filename=$(basename "$model_path")
+
+        name="u${U}_seed${seed}"
+
+        echo "Running inference for ${name}..."
+
+        python /work/robomimic/robomimic/scripts/run_trained_agent.py \
+          --agent "$model_path" \
+          --n_rollouts "$N_ROLLOUTS" \
+          --horizon "$HORIZON" \
+          --seed "$SEED" \
+          --dataset_path "$DATASET_PATH" \
+          --name "$name" \
           --calibration_times 3 \
-          --calibration_path "${LOG_PATH}/u${units}/Seed${seed}.json" \
+          --calibration_path "$LOG_PATH/Seed${seed}.json" \
           --calibration_percentile 99.9 \
-          --dataset_path "${DATASET_PATH}" \
-          --name "u${units}_quantized_${quantize}bit_seed${seed}" \
-          --CAM_quantization "${quantize}" \
-          --csv_path "${CSV_BASE}u${units}_quantized_${quantize}bit.csv" \
+          --CAM_quantization "${quantize_bit}" \
+          --csv_path "$CSV_BASE/${quantize_bit}bit.csv"
 
-      echo "Completed: ${name} with ${quantize}-bit quantization"
-      echo "----------------------------------------"
+        echo "Completed: ${name}"
+        echo "----------------------------------------"
+        seed=$((seed + 1))
+      fi
+    done
   done
-
-  echo "Completed: ${name}"
-  echo "----------------------------------------"
 done
+
 echo "=========================================="
 echo "All experiments completed!"
 echo "Results saved in ${CSV_BASE}"
