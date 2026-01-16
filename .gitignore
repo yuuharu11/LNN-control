@@ -11,3 +11,4 @@ outputs/
 wandb/
 robomimic/quantize_logs/
 robomimic/logs/
+robomimic/trained_models/
