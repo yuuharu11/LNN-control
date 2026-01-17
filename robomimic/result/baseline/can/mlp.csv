@@ -1,2 +1,0 @@
-name,return,horizon,success_rate,avg_policy_latency_ms,std_policy_latency_ms,avg_power_usage_w,std_power_usage_w,idle_power_w,avg_gpu_memory_increase_mb,std_gpu_memory_increase_mb,avg_cpu_memory_increase_mb,std_cpu_memory_increase_mb
-mlp_1,0.82,162.54,0.82,2.540602815896087,1.9896833412411727,67.63516031641879,4.304973961403983,64.71981999999998,0.0008528037383177569,0.008780151872570694,0.00527686445372425,0.05420549908305362

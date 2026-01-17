@@ -4,11 +4,11 @@
 DATASET_PATH="/work/robomimic/datasets/can/ph/low_dim_v15_5.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
-SEED=0
-CSV_BASE="/work/robomimic/result/baseline/can/ncp_u128"
+SEED=1
+CSV_BASE="/work/robomimic/csv/result/baseline/can/ncp_u128"
 mkdir -p $(dirname ${CSV_BASE})   
 MODEL_DIR="/work/robomimic/trained_models/can/u128"
-count=1
+count=21
 unit=128
 for model_path in ${MODEL_DIR}/model_epoch_*_low_dim_v15_success_*; do
   if [[ -f "$model_path" ]]; then

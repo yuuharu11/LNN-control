@@ -6,8 +6,8 @@ N_ROLLOUTS=100
 HORIZON=400
 SEED=0
 
-UNITS_LIST=(64 128 256)
-QUANTIZES=(1 2 3 4 5 6 7 8)
+UNITS_LIST=(128 256)
+QUANTIZES=(8)
 
 for quantize_bit in "${QUANTIZES[@]}"; do
   echo "=========================================="
