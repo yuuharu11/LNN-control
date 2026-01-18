@@ -13,11 +13,10 @@ echo ""
 # ===== Square 設定リスト =====
 declare -a SQUARE_CONFIGS=(
   "bc:square/ph/low_dim"
-  "bc_rnn:square/ph/low_dim"
 )
 
 # seed をループ
-SEEDS=(4 5 6 7 8 9 10)
+SEEDS=(6 9)
 
 TOTAL=$(( ${#SQUARE_CONFIGS[@]} * ${#SEEDS[@]} ))
 echo "Total runs: ${TOTAL} (configs=${#SQUARE_CONFIGS[@]} x seeds=${#SEEDS[@]})"

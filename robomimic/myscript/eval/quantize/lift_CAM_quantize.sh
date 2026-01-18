@@ -19,7 +19,7 @@ for quantize_bit in "${QUANTIZES[@]}"; do
     echo "Running experiments for unit${U}"
     echo "=========================================="
 
-    CSV_BASE="/work/robomimic/csv/result/lift/quantize/CAM/unit${U}/"
+    CSV_BASE="/work/robomimic/csv/result/quantize/CAM/unit${U}/"
     mkdir -p ${CSV_BASE}
     MODEL_DIR="/work/robomimic/trained_models/lift/u${U}"
     LOG_PATH="/work/robomimic/logs/quantize/best/calibration/u${U}"
