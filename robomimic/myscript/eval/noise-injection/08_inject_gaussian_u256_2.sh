@@ -5,13 +5,21 @@ DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_10.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
 SEED=1
-gaussian=(0.04 0.05 0.06)
+gaussian=(0.07 0.08 0.09 0.10)
 CSV_BASE="/work/robomimic/csv/result/error/proposal/gaussian/"
 LOG_PATH="/work/robomimic/logs/quantize/best/calibration/u256"
 mkdir -p ${CSV_BASE}
 MODEL_DIR="/work/robomimic/trained_models/lift/u256"
-seed=0
+
 for model_path in ${MODEL_DIR}/seed*_model_epoch_*_low_dim_v15_success_*; do
+  seed=$(grep -oP 'seed\K[0-9]+' <<<"$model_path" | head -n 1)
+  if [[ -z "$seed" ]]; then
+    echo "Skip (could not parse seed): $model_path" >&2
+    continue
+  fi
+  if [[ $seed -le 17 ]]; then
+    continue
+  fi
   for g in "${gaussian[@]}"; do
     if [[ -f "$model_path" ]]; then
       name="u256_${seed}"
@@ -40,7 +48,6 @@ for model_path in ${MODEL_DIR}/seed*_model_epoch_*_low_dim_v15_success_*; do
       echo "----------------------------------------"
     fi
   done
-  seed=$((seed + 1))
 done
 echo "=========================================="
 echo "All experiments completed!"
