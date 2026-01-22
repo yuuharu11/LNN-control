@@ -4,8 +4,8 @@
 DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_2.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
-SEED=1
-gaussian=(0.06)
+SEED=10
+gaussian=(0.05 0.06 0.07 0.08)
 CSV_BASE="/work/robomimic/csv/result/error/proposal/gaussian/"
 LOG_PATH="/work/robomimic/logs/quantize/best/calibration/u64"
 mkdir -p ${CSV_BASE}
@@ -14,9 +14,6 @@ for model_path in ${MODEL_DIR}/seed*_model_epoch_*_low_dim_v15_success_*; do
   seed=$(grep -oP 'seed\K[0-9]+' <<<"$model_path" | head -n 1)
   if [[ -z "$seed" ]]; then
     echo "Skip (could not parse seed): $model_path" >&2
-    continue
-  fi
-  if [[ $seed -ne 1 ]] && [[ $seed -ne 9 ]]; then
     continue
   fi
   for g in "${gaussian[@]}"; do
