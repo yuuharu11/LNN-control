@@ -1,24 +1,34 @@
 #!/bin/bash
-
+# --- Environment / working directory setup ---
+# Enable conda in non-interactive shells and activate the expected env.
+if command -v conda >/dev/null 2>&1; then
+  CONDA_BASE="$(conda info --base 2>/dev/null || true)"
+  if [[ -n "${CONDA_BASE}" && -f "${CONDA_BASE}/etc/profile.d/conda.sh" ]]; then
+    # shellcheck disable=SC1090
+    source "${CONDA_BASE}/etc/profile.d/conda.sh"
+    conda activate robomimic_venv
+  else
+    echo "conda is available, but conda.sh was not found (base=${CONDA_BASE})." >&2
+    exit 1
+  fi
+else
+  echo "conda command not found. Please install/enable conda before running." >&2
+  exit 1
+fi
 # モデルファイルと共通パラメータ
-DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_13.hdf5"
+DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_17.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
 SEED=0
-shift=(0.04)
-CSV_BASE="/work/robomimic/csv/result/error/proposal/shift/u256"
+shift=(0.01 0.02 0.03 0.04)
+CSV_BASE="/work/robomimic/csv/result/error/proposal/6bit/shift/u256"
 LOG_PATH="/work/robomimic/logs/quantize/best/calibration/u256"
 mkdir -p ${CSV_BASE}
 MODEL_DIR="/work/robomimic/trained_models/lift/u256"
+
 for model_path in ${MODEL_DIR}/seed*_model_epoch_*_low_dim_v15_success_*; do
   seed=$(grep -oP 'seed\K[0-9]+' <<<"$model_path" | head -n 1)
-  if [[ -z "$seed" ]]; then
-    echo "Skip (could not parse seed): $model_path" >&2
-    continue
-  fi
-  if [[ $seed -ne 1 ]]; then
-    continue
-  fi
+
   for s in "${shift[@]}"; do
     if [[ -f "$model_path" ]]; then
       name="u256_${seed}"
@@ -38,15 +48,15 @@ for model_path in ${MODEL_DIR}/seed*_model_epoch_*_low_dim_v15_success_*; do
           --weight_quantization 6 \
           --LUT_quantization 5 \
           --CAM_quantization 6 \
-          --ADC_quantization 5 \
-          --DAC_quantization 8 \
+          --ADC_quantization 8 \
+          --DAC_quantization 5 \
+          --cell_bits 6 \
           --shift "${s}" \
           --csv_path "${CSV_BASE}/shift${s}.csv" 
 
       echo "----------------------------------------"
     fi
   done
-  
     echo "Completed: ${model_path}"
     echo "----------------------------------------"
 done

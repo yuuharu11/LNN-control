@@ -828,10 +828,7 @@ def run_trained_agent(args):
             if args.weight_quantization is not None:
                 ltc_cell.weight_quantization = int(args.weight_quantization)
                 print(f"[Quantize] weight_quantization = {ltc_cell.weight_quantization}")
-                ltc_cell._weight_quantization(weight_quantization=ltc_cell.weight_quantization, gaussian=args.gaussian, shift=args.shift)
-            elif args.gaussian is not None or args.shift is not None:
-                ltc_cell._weight_quantization(gaussian=args.gaussian, shift=args.shift)
-                print(f"[Error Injection] weight_injection gaussian error = {args.gaussian}, shift error = {args.shift}")
+                ltc_cell._weight_quantization(weight_quantization=ltc_cell.weight_quantization, gaussian=args.gaussian, shift=args.shift, cell_bits=args.cell_bits)
             if args.digital_SRAM_quantization is not None:
                 ltc_cell.digital_SRAM_quantization = int(args.digital_SRAM_quantization)
                 print(f"[Quantize] digital_SRAM_quantization = {ltc_cell.digital_SRAM_quantization}")
@@ -1148,15 +1145,22 @@ if __name__ == "__main__":
     parser.add_argument(
         "--gaussian",
         type=float,
-        default=None,
+        default=0.0,
         help="(Deprecated) If provided, add Gaussian noise with this stddev to observations during rollout.",
     )
 
     parser.add_argument(
         "--shift",
         type=float,
-        default=None,
+        default=0.0,
         help="(Deprecated) If provided, add shift noise with this range to observations during rollout.",
+    )
+
+    parser.add_argument(
+        "--cell_bits",
+        type=int,
+        default=2,
+        help="If provided, set number of bits for LTCCell during rollouts.",
     )
 
     args = parser.parse_args()

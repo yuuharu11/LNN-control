@@ -178,7 +178,7 @@ class LTCCell(SequenceModule):
 
         with open(path, "w") as f:
             json.dump(buf, f, indent=2)
-    
+
     def _make_positive(self):
         self._params["cm"] = self.make_positive_fn(self._params["cm"])
         # params
@@ -187,7 +187,6 @@ class LTCCell(SequenceModule):
         self._params["gleak"] = self.make_positive_fn(self._params["gleak"])
         print("[Completed] Made cm, sensory_w, w, gleak parameters positive")
 
-    # quantization function
     # for cm, vleak, gleak
     @torch.no_grad()
     def digital_ptq(
@@ -316,7 +315,8 @@ class LTCCell(SequenceModule):
 
         return params
     
-    # noise injection for weight @torch.no_grad() 
+    # noise injection for weight 
+    @torch.no_grad() 
     def injection_error( 
         self, 
         params: torch.Tensor, 
@@ -387,6 +387,103 @@ class LTCCell(SequenceModule):
         params_noisy = w_norm_noisy * scale 
         print(f"[Injection-Error] sigma={sigma}, shift={shift}, scale={scale.item():.3e}")
         return params_noisy
+
+    @torch.no_grad()
+    def injection_error_mlc(
+        self,
+        params: torch.Tensor,
+        sigma: float = 0.0,
+        shift: float = 0.0,
+        bits: int = 6,
+        cell_bits: int = 2,
+        symmetric: bool = True,
+        eps: float = 1e-12
+    ):
+        sigma_val = 0.0 if sigma is None else float(sigma)
+        shift_val = 0.0 if shift is None else float(shift)
+        if (sigma_val <= 0.0) and (shift_val == 0.0):
+            return params
+
+        if bits % cell_bits != 0:
+            raise ValueError("bits must be divisible by cell_bits")
+
+        # 0重みは不変（floatの厳密比較は避ける）
+        weight_nz = (params.abs() > eps).to(torch.float32)
+
+        # ----------------------
+        # 1. [0,1] に正規化
+        # ----------------------
+        if symmetric:
+            # sign-magnitude 想定：セルには |w| のみ保存し、最後に符号を戻す
+            scale = params.abs().max().clamp(min=eps)
+            sign = torch.sign(params)  # -1,0,+1
+            w01 = (params.abs() / scale).clamp(0.0, 1.0)  
+        else:
+            scale = params.max().clamp(min=eps)
+            sign = 1.0
+            w01 = (params / scale).clamp(0.0, 1.0)
+
+        # ----------------------
+        # 2. 整数に変換
+        # ----------------------
+        # 最大値
+        qmax = (1 << bits) - 1  # 2^bits -1 ex) 6bit: 63
+        q = torch.round(w01 * qmax).to(torch.int64)
+
+        # セル数を求める
+        num_cells = bits // cell_bits
+
+        # セルあたりの最大値
+        cell_max = (1 << cell_bits) - 1 # ex) 2bit: 3
+
+        # ノイズ加算用の行列を用意
+        q_recon = torch.zeros_like(w01, dtype=torch.float32)
+
+        # ----------------------
+        # 3. セルごとにノイズ注入
+        # ----------------------
+        for i in range(num_cells):
+            # セルに位置に合わせたビットシフト量
+            shift_bits = i * cell_bits
+            bit_sig = 1 << shift_bits  
+
+            # セル値を抽出
+            cell_int = (q >> shift_bits) & cell_max
+            cell_val = cell_int.to(torch.float32)
+
+            # 元セルが0ならノイズなし
+            cell_mask = (cell_int != 0).to(torch.float32) * weight_nz
+
+            # sigma/shiftは「セル値(0..cell_max)空間」で扱う
+            cell_sigma = sigma_val * float(cell_max)
+            cell_shift = shift_val * float(cell_max)
+
+            noise = torch.randn_like(cell_val) * cell_sigma * cell_mask
+            shift = cell_shift * cell_mask
+            # shift>0 で 0 方向へ寄せる
+            noisy_cell = torch.clamp(cell_val + noise - shift, 0.0, float(cell_max))
+
+            q_recon += noisy_cell * float(bit_sig)
+
+        # ----------------------
+        # 4. [0,1] に戻す
+        # ----------------------
+        w01_noisy = (q_recon / float(qmax)).clamp(0.0, 1.0)
+
+        # ----------------------
+        #  デバッグ情報出力
+        # ----------------------
+        print(f"[Injection-Error-MLC] sigma={sigma_val}, shift={shift_val}, scale={scale.item():.3e}, bits={bits}, cell_bits={cell_bits}")
+       
+        # ----------------------
+        # 5. 元スケールに戻す
+        # ----------------------
+        if symmetric:
+            w_mag_noisy = w01_noisy  # magnitude
+            w_norm_noisy = torch.clamp(w_mag_noisy * sign, -1.0, 1.0)
+            return w_norm_noisy * scale
+        else:
+            return w01_noisy * scale
     
     @torch.no_grad()
     def ptq_range(
@@ -617,16 +714,13 @@ class LTCCell(SequenceModule):
         self._params["concatenated_w"] = torch.cat((self._params["sensory_w_mask"], self._params["w_mask"]), dim=0)
         self._params["concatenated_w_rev"] = torch.cat((self._params["sensory_w_rev"], self._params["w_rev"]), dim=0)
         
-    def _weight_quantization(self, weight_quantization=None, gaussian: Optional[float] = None, shift: Optional[float] = None):
+    def _weight_quantization(self, weight_quantization=None, gaussian=0.0, shift=0.0, cell_bits=2):
         if weight_quantization is not None:
             self._params["concatenated_w"].copy_(self.ptq_weight_nonzero(self._params["concatenated_w"], n_bits=weight_quantization, name="w", symmetric=False))
             self._params["concatenated_w_rev"].copy_(self.ptq_weight_nonzero(self._params["concatenated_w_rev"], n_bits=weight_quantization, name="w_rev", symmetric=True))
-        if gaussian is not None:
-            self._params["concatenated_w"].copy_(self.injection_error(self._params["concatenated_w"], sigma=gaussian, symmetric=False))
-            self._params["concatenated_w_rev"].copy_(self.injection_error(self._params["concatenated_w_rev"], sigma=gaussian, symmetric=True))
-        elif shift is not None:
-            self._params["concatenated_w"].copy_(self.injection_error(self._params["concatenated_w"], shift=shift, symmetric=False))
-            self._params["concatenated_w_rev"].copy_(self.injection_error(self._params["concatenated_w_rev"], shift=shift, symmetric=True))
+        if gaussian is not None or shift is not None:
+            self._params["concatenated_w"].copy_(self.injection_error_mlc(self._params["concatenated_w"], sigma=gaussian, shift=shift, symmetric=False, cell_bits=cell_bits))
+            self._params["concatenated_w_rev"].copy_(self.injection_error_mlc(self._params["concatenated_w_rev"], sigma=gaussian, shift=shift, symmetric=True, cell_bits=cell_bits))
 
     def _sigmoid(self, v_pre, mu, sigma):
         v_pre = torch.unsqueeze(v_pre, -1)  # For broadcasting
@@ -680,7 +774,8 @@ class LTCCell(SequenceModule):
 
             # for logging LUT activations distribution
             if self.calibration_path is not None:
-                if np.random.random() < 0.01:  # log 1% of steps
+                if np.random.random() < 0.01:
+                    # self.dump_lut_values(x[:,150], activate_x[:,150], w_denominator, w_numerator, path=self.calibration_path, bins=100, append=True)
                     self.dump_lut_values(x, activate_x, w_denominator, w_numerator, path=self.calibration_path, bins=100, append=True)
 
             if self.ADC_quantization is not None:

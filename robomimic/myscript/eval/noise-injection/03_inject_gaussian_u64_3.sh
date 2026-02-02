@@ -1,17 +1,37 @@
 #!/bin/bash
 
+# --- Environment / working directory setup ---
+# Enable conda in non-interactive shells and activate the expected env.
+if command -v conda >/dev/null 2>&1; then
+  CONDA_BASE="$(conda info --base 2>/dev/null || true)"
+  if [[ -n "${CONDA_BASE}" && -f "${CONDA_BASE}/etc/profile.d/conda.sh" ]]; then
+    # shellcheck disable=SC1090
+    source "${CONDA_BASE}/etc/profile.d/conda.sh"
+    conda activate robomimic_venv
+  else
+    echo "conda is available, but conda.sh was not found (base=${CONDA_BASE})." >&2
+    exit 1
+  fi
+else
+  echo "conda command not found. Please install/enable conda before running." >&2
+  exit 1
+fi
+
 # モデルファイルと共通パラメータ
-DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_14.hdf5"
+DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_4.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
-SEED=1
-gaussian=(0.07 0.08 0.09 0.10)
-CSV_BASE="/work/robomimic/csv/result/error/proposal/gaussian/"
+SEED=10
+gaussian=(0.08 0.09 0.10)
+CSV_BASE="/work/robomimic/csv/result/error/proposal/6bit/gaussian/u64/"
 LOG_PATH="/work/robomimic/logs/quantize/best/calibration/u64"
 mkdir -p ${CSV_BASE}
 MODEL_DIR="/work/robomimic/trained_models/lift/u64"
-seed=0
 for model_path in ${MODEL_DIR}/seed*_model_epoch_*_low_dim_v15_success_*; do
+  seed=$(grep -oP 'seed\K[0-9]+' <<<"$model_path" | head -n 1)
+  if [[ ${seed} -ne 1 ]]; then
+    continue
+  fi
   for g in "${gaussian[@]}"; do
     if [[ -f "$model_path" ]]; then
       name="u64_${seed}"
@@ -32,15 +52,15 @@ for model_path in ${MODEL_DIR}/seed*_model_epoch_*_low_dim_v15_success_*; do
         --weight_quantization 6 \
         --LUT_quantization 5 \
         --CAM_quantization 6 \
-        --ADC_quantization 5 \
-        --DAC_quantization 8 \
+        --ADC_quantization 8 \
+        --DAC_quantization 5 \
+        --cell_bits 6 \
         --gaussian "${g}" \
-        --csv_path "${CSV_BASE}${units}/gaussian${g}.csv" 
+        --csv_path "${CSV_BASE}/gaussian${g}.csv" 
       echo "Completed: ${name}"
       echo "----------------------------------------"
     fi
   done
-  seed=$((seed + 1))
 done
 echo "=========================================="
 echo "All experiments completed!"
