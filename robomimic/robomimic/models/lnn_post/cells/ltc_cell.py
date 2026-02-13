@@ -79,8 +79,6 @@ class LTCCell(SequenceModule):
             "sigma": (3, 8),
             "mu": (0.3, 0.8),
             "sensory_w": (0.001, 1.0),
-            "sensory_sigma": (3, 8),
-            "sensory_mu": (0.3, 0.8),
         }
         self._wiring = wiring
         self._input_mapping = input_mapping
@@ -635,18 +633,6 @@ class LTCCell(SequenceModule):
             name="erev",
             init_value=torch.Tensor(self._wiring.erev_initializer()),
         )
-        self._params["sensory_sigma"] = self.add_weight(
-            name="sensory_sigma",
-            init_value=self._get_init_value(
-                (self.sensory_size, self.state_size), "sensory_sigma"
-            ),
-        )
-        self._params["sensory_mu"] = self.add_weight(
-            name="sensory_mu",
-            init_value=self._get_init_value(
-                (self.sensory_size, self.state_size), "sensory_mu"
-            ),
-        )
         self._params["sensory_w"] = self.add_weight(
             name="sensory_w",
             init_value=self._get_init_value(
@@ -723,10 +709,10 @@ class LTCCell(SequenceModule):
             self._params["concatenated_w_rev"].copy_(self.injection_error_mlc(self._params["concatenated_w_rev"], sigma=gaussian, shift=shift, symmetric=True, cell_bits=cell_bits))
 
     def _sigmoid(self, v_pre, mu, sigma):
-        x = v_pre.unsqueeze(-1)  # For broadcasting
-        mu = mu.view(1, 1, -1)
-        sigma = sigma.view(1, 1, -1)
-        return torch.sigmoid((x - mu) * sigma)
+        v_pre = torch.unsqueeze(v_pre, -1)  
+        mues = v_pre - mu
+        x = sigma * mues
+        return torch.sigmoid(x)
 
     def _ode_solver(self, inputs, state, elapsed_time):
         # state is fixed
@@ -749,6 +735,8 @@ class LTCCell(SequenceModule):
                 x = self.ptq_cam(x, n_bits=self.CAM_quantization, clip_min=self.clip_min, clip_max=self.clip_max, name=f"v_pre_step{t}")
             
             # slice x to states for sigmoid calculation
+            mu = self._params["mu"].view(1, 1, -1)
+            sigma = self._params["sigma"].view(1, 1, -1)
             activate_x = self._sigmoid(x, self._params["mu"], self._params["sigma"])
 
             if self.LUT_quantization is not None:

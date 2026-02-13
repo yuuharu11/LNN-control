@@ -21,7 +21,7 @@ from .lstm import LSTMCell
 from .sequence_module import SequenceModule
 
 
-class LTC(SequenceModule):
+class LTC_POST(SequenceModule):
     def __init__(
         self,
         input_size,
@@ -77,7 +77,7 @@ class LTC(SequenceModule):
         :param implicit_param_constraints:
         """
 
-        super(LTC, self).__init__()
+        super(LTC_POST, self).__init__()
         self.input_size = input_size
         self.wiring_or_units = units
         self.batch_first = batch_first
