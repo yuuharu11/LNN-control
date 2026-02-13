@@ -22,7 +22,7 @@ DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_10.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
 SEED=10
-gaussian=(0.08 0.09 0.10)
+gaussian=(0.045 0.055)
 CSV_BASE="/work/robomimic/csv/result/error/proposal/6bit/gaussian/u256"
 LOG_PATH="/work/robomimic/logs/quantize/best/calibration/u256"
 mkdir -p ${CSV_BASE}
