@@ -17,8 +17,8 @@ from torch import nn
 from typing import Optional, Union
 import ncps
 from .cells import CfCCell, LTCCell
-from .lstm import LSTMCell
-from .sequence_module import SequenceModule
+from ..lnn_post.lstm import LSTMCell
+from ..lnn_post.sequence_module import SequenceModule
 
 
 class LTC(SequenceModule):
