@@ -737,7 +737,7 @@ class LTCCell(SequenceModule):
             # slice x to states for sigmoid calculation
             mu = self._params["mu"].view(1, 1, -1)
             sigma = self._params["sigma"].view(1, 1, -1)
-            activate_x = self._sigmoid(x, self._params["mu"], self._params["sigma"])
+            activate_x = self._sigmoid(x, mu, sigma)
 
             if self.LUT_quantization is not None:
                 activate_x = self.ptq_lut(activate_x, n_bits=self.LUT_quantization, name=f"w_activation_step{t}")

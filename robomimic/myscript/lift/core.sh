@@ -13,11 +13,10 @@ echo ""
 # ===== Lift 設定リスト =====
 declare -a LIFT_CONFIGS=(
   "bc:lift/ph/low_dim"
-  "bc_rnn:lift/ph/low_dim"
 )
 
 # seed をループ
-SEEDS=(4 5 6 7 8 9 10)
+SEEDS=(99)
 
 TOTAL=$(( ${#LIFT_CONFIGS[@]} * ${#SEEDS[@]} ))
 echo "Total runs: ${TOTAL} (configs=${#LIFT_CONFIGS[@]} x seeds=${#SEEDS[@]})"

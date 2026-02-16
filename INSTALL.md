@@ -1,7 +1,9 @@
-# Environment Setup Guide for LTC Training with Robomimic/Robosuite
+# 環境構築ガイド — LTC 学習 (Robomimic / Robosuite)
 
-## Quick Start
-### 1. Install MiniConda
+## クイックスタート
+
+### 1. Miniconda のインストール
+
 ```bash
 apt install wget
 wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh
@@ -10,132 +12,134 @@ $HOME/miniconda3/bin/conda init bash
 source $HOME/.bashrc && conda --version
 ```
 
-### 2. Create Conda Environment
+### 2. Conda 環境の作成
 
 ```bash
 conda create -n robomimic_venv python=3.10
 conda activate robomimic_venv
 ```
 
-### 3. Install Dependencies
+### 3. 依存ライブラリのインストール
+
 ```bash
-# Install system libraries
+# システムライブラリ
 apt update
 apt install -y libgl1-mesa-glx libglib2.0-0 libsm6 libxext6 libxrender-dev libgomp1
 
-# For EGL (GPU rendering - recommended if /dev/dri exists)
+# EGL（GPU 描画 — /dev/dri が存在する場合に推奨）
 apt install -y libegl1-mesa libegl1-mesa-dev libgles2-mesa-dev
 
-# For OSMesa (CPU rendering - fallback option)
+# OSMesa（CPU 描画 — フォールバック用）
 apt install -y libosmesa6-dev
 ```
 
-### 3.1 Fix libstdc++ compatibility for OSMesa rendering
+### 3.1 OSMesa 描画用の libstdc++ 互換性修正
+
 ```bash
-# Option 1: Update conda's libstdc++ (Recommended)
+# 方法 1: conda の libstdc++ を更新（推奨）
 conda install -c conda-forge libstdcxx-ng
 
-# Option 2: Prioritize system libraries (Alternative)
-# Add to ~/.bashrc:
+# 方法 2: システムライブラリを優先する（代替）
+# ~/.bashrc に追記:
 echo 'export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-### 4. Install Robomimic and Robosuite from Source
+### 4. Robomimic と Robosuite のソースインストール
 
 ```bash
-# Install robomimic
+# robomimic のインストール
 cd /work/robosuite/robomimic
 pip install -e .
 
-# Install robosuite
+# robosuite のインストール
 cd /work/robosuite
 pip install -e .
 ```
 
-### 5. Verify Installation
+### 5. インストールの確認
 
 ```bash
-# Test PyTorch
+# PyTorch の確認
 python -c "import torch; print('PyTorch version:', torch.__version__); print('CUDA available:', torch.cuda.is_available())"
 
-# Test robosuite
+# robosuite の確認
 python -c "import robosuite; print('Robosuite version:', robosuite.__version__)"
 
-# Test ncps
+# ncps の確認
 python -c "import ncps; print('NCP/LTC imported successfully')"
 ```
 
-## Alternative: Full Installation
+## 代替: フルインストール
 
-If you want all dependencies (including optional packages):
+オプションパッケージを含むすべての依存をインストールする場合:
 
 ```bash
 pip install -r requirements_full.txt
 ```
 
-## Troubleshooting
+## トラブルシューティング
 
-### Issue: ModuleNotFoundError for robosuite
+### 問題: robosuite の ModuleNotFoundError
 
-**Solution:**
+**対処:**
 ```bash
 export PYTHONPATH="/work/robosuite:$PYTHONPATH"
 ```
 
-Or add to your `.bashrc`:
+または `.bashrc` に追記して恒久化:
 ```bash
 echo 'export PYTHONPATH="/work/robosuite:$PYTHONPATH"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-### Issue: CUDA version mismatch
+### 問題: CUDA バージョンの不一致
 
-**Solution:**
-Check your CUDA version:
+**対処:**
+CUDA バージョンを確認:
 ```bash
 nvidia-smi
 ```
 
-Then install the matching PyTorch version from https://pytorch.org/get-started/locally/
+対応する PyTorch バージョンを https://pytorch.org/get-started/locally/ からインストールしてください。
 
-### Issue: EGL/OSMesa rendering errors
+### 問題: EGL / OSMesa 描画エラー
 
-**Solution 1: Use EGL with GPU (Recommended - Fast)**
+**対処 1: EGL + GPU を使用（推奨 — 高速）**
 ```bash
-# Verify DRI devices are available
-ls -la /dev/dri/  # Should show renderD128, card0, etc.
+# DRI デバイスが利用可能か確認
+ls -la /dev/dri/  # renderD128, card0 等が表示されるはず
 
-# Set environment variables for EGL
+# EGL 用の環境変数を設定
 export MUJOCO_GL=egl
 export PYOPENGL_PLATFORM=egl
 
-# Add to ~/.bashrc for persistence
+# ~/.bashrc に追記して恒久化
 echo 'export MUJOCO_GL=egl' >> ~/.bashrc
 echo 'export PYOPENGL_PLATFORM=egl' >> ~/.bashrc
 source ~/.bashrc
 
-# Verify
+# 動作確認
 python -c "import os; os.environ['MUJOCO_GL']='egl'; os.environ['PYOPENGL_PLATFORM']='egl'; import mujoco; print('✅ EGL OK - GPU rendering enabled')"
 ```
 
-**Solution 2: Use OSMesa (Software Rendering - Slower but works anywhere)**
+**対処 2: OSMesa を使用（ソフトウェア描画 — 低速だがどこでも動作）**
 ```bash
-# Install OSMesa
+# OSMesa のインストール
 apt install -y libosmesa6-dev
 
-# Update libstdc++ for compatibility
+# 互換性のため libstdc++ を更新
 conda install -c conda-forge libstdcxx-ng
 
-# Set environment variables
+# 環境変数を設定
 export MUJOCO_GL=osmesa
 export PYOPENGL_PLATFORM=osmesa
 
-# Verify
+# 動作確認
 python -c "import os; os.environ['MUJOCO_GL']='osmesa'; os.environ['PYOPENGL_PLATFORM']='osmesa'; import mujoco; print('✅ OSMesa OK - CPU rendering')"
 ```
 
-**Solution 3: No rendering mode (for training without camera obs)**
+**対処 3: 描画なしモード（カメラ観測を使わない学習向け）**
 ```python
 env = suite.make(
     "Lift",
@@ -143,122 +147,4 @@ env = suite.make(
     has_offscreen_renderer=False,
     use_camera_obs=False,
 )
-```
-
-**Rendering Backend Comparison:**
-| Backend | Speed | GPU | Requirements |
-|---------|-------|-----|--------------|
-| EGL | ⚡⚡⚡ Fast | ✅ Yes | `/dev/dri` devices |
-| OSMesa | 🐌 Slow | ❌ CPU only | `libosmesa6-dev` |
-| No render | ⚡⚡⚡ Fastest | N/A | None (no visual obs) |
-
-### Issue: Protobuf version conflicts
-
-**Solution:**
-Force install the correct version:
-```bash
-pip install protobuf==3.20.3 --force-reinstall
-```
-
-## Package Version Summary
-
-| Package | Version | Purpose |
-|---------|---------|---------|
-| Python | 3.10.x | Base environment |
-| PyTorch | >=2.0.0 | Deep learning framework |
-| pytorch-lightning | >=2.0.0 | Training framework |
-| ncps | >=1.0.0 | LTC/NCP neural networks |
-| tensorflow | 2.14.0 | Robomimic compatibility |
-| mujoco | >=3.0.0 | Physics simulation |
-| robosuite | 1.5.1 | Robotics environments |
-| hydra-core | >=1.3.0 | Configuration management |
-
-## Testing Your Setup
-
-### Test 1: Train on UCI-HAR Dataset
-
-```bash
-cd /work/liquid_time-constant_networks
-python train.py experiment=uci_har/ncp dataset=uci_har train.seed=1
-```
-
-### Test 2: Train on Robomimic Dataset
-
-```bash
-cd /work/liquid_time-constant_networks
-./train_scripts/robomimic/ncp_lift.sh
-```
-
-### Test 3: Evaluate with Rollouts (requires robosuite)
-
-```bash
-cd /work/liquid_time-constant_networks
-./eval_robosuite.sh
-```
-
-## Known Issues
-
-1. **torchvision image.so warning**: This is a known issue with pre-built torchvision wheels. It doesn't affect training. To fix, rebuild torchvision from source or ignore the warning.
-
-2. **Pydantic warnings**: UnsupportedFieldAttributeWarning can be safely ignored. These are compatibility warnings between pydantic and other packages.
-
-3. **TF32 precision warnings**: PyTorch 2.9+ changed default precision settings. These warnings can be safely ignored for most use cases.
-
-## Conda Environment Export
-
-To export your exact environment:
-
-```bash
-conda activate robomimic_venv
-conda env export > environment.yml
-pip freeze > requirements_frozen.txt
-```
-
-To recreate from export:
-
-```bash
-conda env create -f environment.yml
-```
-
-## Docker Alternative
-
-If you prefer Docker:
-
-```bash
-# Build image
-docker build -t ltc-robomimic .
-
-# Run container
-docker run --gpus all -it -v /work:/work ltc-robomimic
-```
-
-## Additional Resources
-
-- PyTorch Installation: https://pytorch.org/get-started/locally/
-- Robosuite Documentation: https://robosuite.ai/
-- NCP/LTC Paper: https://www.nature.com/articles/s42256-020-00237-3
-- Hydra Documentation: https://hydra.cc/
-
-## License
-
-See individual package licenses for details.
-
-## Citation
-
-If you use this codebase, please cite:
-
-```bibtex
-@article{hasani2020liquid,
-  title={Liquid time-constant networks},
-  author={Hasani, Ramin and Lechner, Mathias and Amini, Alexander and Rus, Daniela and Grosu, Radu},
-  journal={arXiv preprint arXiv:2006.04439},
-  year={2020}
-}
-
-@inproceedings{robosuite2020,
-  title={robosuite: A modular simulation framework and benchmark for robot learning},
-  author={Zhu, Yuke and Wong, Josiah and Mandlekar, Ajay and Mart{\'i}n-Mart{\'i}n, Roberto and Joshi, Abhishek and Nasiriany, Soroush and Zhu, Yifeng},
-  booktitle={arXiv preprint arXiv:2009.12293},
-  year={2020}
-}
 ```

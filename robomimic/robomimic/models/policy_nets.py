@@ -22,6 +22,7 @@ from robomimic.models.obs_nets import MIMO_MLP, RNN_MIMO_MLP, MIMO_Transformer, 
 from robomimic.models.vae_nets import VAE
 from robomimic.models.distributions import TanhWrappedDistribution
 from robomimic.models.lnn.ltc import LTC
+from robomimic.models.lnn_post.ltc import LTC_POST
 from robomimic.models.lnn.cfc import CfC
 
 
@@ -1596,10 +1597,7 @@ class LNNActorNetwork(nn.Module):
         # LTC コア
         ltc_kwargs = dict(lnn_args["lnn"])
         ltc_kwargs["input_size"] = in_dim
-
-        digital_RRAM_quantization = ltc_kwargs.get("digital_RRAM_quantization", None)
-        digital_SRAM_quantization = ltc_kwargs.get("digital_SRAM_quantization", None)
-                
+       
         if self.core_type == "LTC":
             self.core = LTC(
                 input_size=ltc_kwargs["input_size"],
@@ -1614,9 +1612,24 @@ class LNNActorNetwork(nn.Module):
                 implicit_param_constraints=ltc_kwargs["implicit_param_constraints"],
                 dropout=0.0,
                 transposed=False,
-                digital_RRAM_quantization=digital_RRAM_quantization,
-                digital_SRAM_quantization=digital_SRAM_quantization,
             )
+        
+        elif self.core_type == "LTC_POST":
+            self.core = LTC_POST(
+                input_size=ltc_kwargs["input_size"],
+                units=ltc_kwargs["units"],
+                return_sequences=True,
+                batch_first=True,
+                mixed_memory=ltc_kwargs["mixed_memory"],
+                input_mapping=ltc_kwargs["input_mapping"],
+                output_mapping=ltc_kwargs["output_mapping"],
+                ode_unfolds=ltc_kwargs["ode_unfolds"],
+                epsilon=ltc_kwargs["epsilon"],
+                implicit_param_constraints=ltc_kwargs["implicit_param_constraints"],
+                dropout=0.0,
+                transposed=False,
+            )
+        
         elif self.core_type == "CfC":
             self.core = CfC(
                 input_size=ltc_kwargs["input_size"],
@@ -1632,6 +1645,8 @@ class LNNActorNetwork(nn.Module):
                 dropout=0.0,
                 transposed=False,
             )
+        else:
+            raise ValueError(f"Unsupported core_type: {self.core_type}")
 
         # 出力ヘッド(decoderの役割)
         layers = []
@@ -1659,6 +1674,8 @@ class LNNActorNetwork(nn.Module):
             return self.core(x, timespans=timespans, hx=rnn_state)
         elif self.core_type == "LTC":
             return self.core(x, state=rnn_state)
+        elif self.core_type == "LTC_POST":
+            return self.core(x, state=rnn_state)
         else:
             return self.core(x, hx=rnn_state)
         
@@ -1674,9 +1691,7 @@ class LNNActorNetwork(nn.Module):
         return torch.tanh(a)                                  # squash to [-1, 1]
 
     def forward_train(self, obs_dict, goal_dict=None):
-        """学習用: 逐次推論せず一括処理"""
-        actions, _ = self.forward(obs_dict, goal_dict)
-        return actions
+        return self.forward(obs_dict, goal_dict)
 
     def get_lnn_init_state(self, batch_size, device):
         """初期隠れ状態を生成"""

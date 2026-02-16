@@ -1,76 +1,91 @@
-# Robosuite & Robomimic 統合リポジトリ
+# Robosuite + Robomimic + LTC 実験リポジトリ
 
-このリポジトリは [robosuite](https://github.com/ARISE-Initiative/robosuite) と [robomimic](https://github.com/ARISE-Initiative/robomimic) を統合し、反射モデルの実験を行う環境です。  
+MuJoCo ロボットシミュレーション上で、LTC (Liquid Time-Constant) / CfC などのニューラルネットワークを用いた **模倣学習** を行う実験環境です。
 
-## 概要
+---
 
-- **Robosuite**: MuJoCoベースの物理シミュレーションによるロボット環境を提供
-- **Robomimic**: 模倣学習アルゴリズム（BC, BCQ, CQL など）や模倣学習用のデータセットを提供
-- **目的**: 低次元データや画像ベースのロボットデータセットを用いたポリシー学習と推論を行う
+## 目次
 
-## インストール
-参考：
-https://robomimic.github.io/docs/introduction/overview.html
+1. [全体像](#全体像)
+2. [ディレクトリ構成](#ディレクトリ構成)
+3. [セットアップ](#セットアップ)
+4. [参考リンク・引用](#参考リンク引用)
 
+---
 
-```bash
-# リポジトリのクローン
-git clone https://github.com/yourusername/your-repo.git
-cd your-repo
+## 全体像
 
-# 仮想環境構築用のMinicondaのインストール
-apt install wget
-wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh
-bash /tmp/miniconda.sh -b -p $HOME/miniconda3
-$HOME/miniconda3/bin/conda init bash
-source $HOME/.bashrc && conda --version
+本リポジトリは 3 つのサブプロジェクトで構成されています。
+各リポジトリは基本的にOSSを自分で実験用に改変したものになります。robosuit/については改変していません。
 
-# Python 仮想環境の作成
-conda create -n robomimic_venv python=3.10
-conda activate robomimic_venv
+| サブプロジェクト | 役割 | 元リポジトリ |
+|---|---|---|
+| `robosuite/` | MuJoCo ロボット環境 | [ARISE-Initiative/robosuite](https://github.com/ARISE-Initiative/robosuite) |
+| `robomimic/` | 学習アルゴリズム + デモデータセット管理 | [ARISE-Initiative/robomimic](https://github.com/ARISE-Initiative/robomimic) |
+| `liquid_time-constant_networks/` | LTC/NCPモデル | [mlech26I/ncps](https://github.com/mlech26l/ncps?tab=readme-ov-file) |
 
-# robomimicのインストール
-cd robomimic
-pip install -e .
+---
 
-# robosuiteのインストール
-cd robosuite
-pip install -r requirements.txt
+## ディレクトリ構成
 
-# 必要なパッケージのインストール
-# Install system libraries
-apt update
-apt install -y libgl1-mesa-glx libglib2.0-0 libsm6 libxext6 libxrender-dev libgomp1
-
-# For OSMesa (for CPU rendering)
-apt install -y libosmesa6-dev
-conda install -c conda-forge libstdcxx-ng
-
-pip install ncps
-pip install -r /work/requirements.txt
-
-```
+```text
+/work
+├── README.md                        ← 本ファイル
+├── INSTALL.md                       ← インストールガイド
+├── requirements.txt                 ← robomimic_venv仮想環境における依存環境（robotタスク向け）
+├── requirements_base.txt            ← 通常の依存環境（通常タスク向け）
+|
+├── liquid_time-constant_networks/      
+│   
+├── robomimic/                           
+│
+└── robosuite/       
+```  
 
 ## セットアップ
-### データセットのダウンロード
-全てのタスクのダウンロード
-```bash
-python /work/robomimic/robomimic/scripts/download_datasets.py --tasks all
-```
-データセットのhdf5ファイルは/work/robomimic/datasets下におく
 
-### configファイルの作成
-論文の再現実験用のconfigファイルは以下のコマンドで取得できる
-```bash
-python /work/robomimic/robomimic/scripts/generate_paper_configs.py
-```
-configファイルは/work/robomimic/robomimic/exps下におく
-ここで学習や推論の細かい設定を行う
+> 詳細な手順やトラブルシューティングは `INSTALL.md` を参照してください。
+うまくいかない場合には下に記載した公式ページを参照してください。
 
-### 学習のテンプレート
-```bash
-python train.py --config yourconfig.json --dataset yourdataset.hdf5
+### 前提
+
+- OS: Ubuntu 系 Linux
+- Python: 3.10 推奨
+- Conda（Miniconda）
+
+---
+
+## 参考リンク・引用
+
+- Robomimic: https://robomimic.github.io/docs/introduction/overview.html
+- Robosuite: https://robosuite.ai/docs/overview.html
+- NCP: https://www.nature.com/articles/s42256-020-00237-3
+
+```bibtex
+@article{hasani2020liquid,
+  title={Liquid time-constant networks},
+  author={Hasani, Ramin and Lechner, Mathias and Amini, Alexander and Rus, Daniela and Grosu, Radu},
+  journal={arXiv preprint arXiv:2006.04439},
+  year={2020}
+}
 ```
+```bibtex
+@inproceedings{robosuite2020,
+  title={robosuite: A Modular Simulation Framework and Benchmark for Robot Learning},
+  author={Yuke Zhu and Josiah Wong and Ajay Mandlekar and Roberto Mart\'{i}n-Mart\'{i}n and Abhishek Joshi and Kevin Lin and Abhiram Maddukuri and Soroush Nasiriany and Yifeng Zhu},
+  booktitle={arXiv preprint arXiv:2009.12293},
+  year={2020}
+}
+```
+```bibtex
+@inproceedings{robosuite2020,
+  title={robosuite: A modular simulation framework and benchmark for robot learning},
+  author={Zhu, Yuke and Wong, Josiah and Mandlekar, Ajay and others},
+  booktitle={arXiv preprint arXiv:2009.12293},
+  year={2020}
+}
+```
+
 
 
 

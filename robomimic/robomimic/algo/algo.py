@@ -350,7 +350,9 @@ class Algo(object):
             model_dict = {"nets": model_dict}
             model_dict["optimizers"] = {}
             model_dict["lr_schedulers"] = {}
-        self.nets.load_state_dict(model_dict["nets"])
+        missing, unexpected = self.nets.load_state_dict(model_dict["nets"], strict=False)
+        print("missing:", missing)
+        print("unexpected:", unexpected)
         if load_optimizers:
             TorchUtils.load_state_dict(self.optimizers, model_dict["optimizers"])
             TorchUtils.load_state_dict(self.lr_schedulers, model_dict["lr_schedulers"])
