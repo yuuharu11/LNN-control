@@ -87,7 +87,6 @@ class PerformanceMonitor:
       - GPU memory allocated by PyTorch (MB)
       - GPU memory reserved by PyTorch (MB)
       - CPU RSS memory of the main process (MB)
-      - GPU power usage via NVML (W), if available
       - Elapsed wall-clock time (s)
 
     Notes:
@@ -136,32 +135,6 @@ class PerformanceMonitor:
         process = psutil.Process()
         return process.memory_info().rss / 1024.0 / 1024.0
 
-    # ------------------------------------------------------------------
-    # GPU power
-    # ------------------------------------------------------------------
-    def gpu_power_usage(self):
-        """Instantaneous GPU power usage (W)."""
-        if not self.nvml_available:
-            return None
-        power_mw = pynvml.nvmlDeviceGetPowerUsage(self.handle)
-        return power_mw / 1000.0
-
-    # ------------------------------------------------------------------
-    # Idle Power
-    # ------------------------------------------------------------------
-    def gpu_idle_power(self, n_samples=100, delay=00.1):
-        """Measure idle GPU power usage (W) by averaging multiple samples."""
-        if not self.nvml_available:
-            return None
-        powers = []
-        for _ in range(n_samples):
-            power = self.gpu_power_usage()
-            if power is not None:
-                powers.append(power)
-            time.sleep(delay)
-        if len(powers) == 0:
-            return None
-        return sum(powers) / len(powers)
     # ------------------------------------------------------------------
     # Cleanup
     # ------------------------------------------------------------------
@@ -560,14 +533,12 @@ def rollout(policy, env, horizon, render=False, video_writer=None, video_skip=5,
     # for monitoring performance
     step_latencies, policy_latencies, env_step_times = [], [], []
     gpu_memories, cpu_memories = [], []
-    power_usages = []
 
     try:
         for step_i in range(horizon):
             if performance_monitor is not None:
                 gpu_mem_before = performance_monitor.gpu_memory_allocated_mb()
                 cpu_mem_before = performance_monitor.cpu_memory_mb()
-                p_before = performance_monitor.gpu_power_usage()
 
             if torch.cuda.is_available():
                 torch.cuda.synchronize()
@@ -581,9 +552,7 @@ def rollout(policy, env, horizon, render=False, video_writer=None, video_skip=5,
 
             t2 = time.time()
             policy_latencies.append(t2 - t1)
-            p_after = performance_monitor.gpu_power_usage()
-            power_usages.append((p_after + p_before)/2)
-
+                
             # play action
             next_obs, r, done, _ = env.step(act)
 
@@ -644,8 +613,6 @@ def rollout(policy, env, horizon, render=False, video_writer=None, video_skip=5,
                 Success_Rate=float(success),
                 Avg_Policy_Latency=np.mean(policy_latencies),
                 Std_Policy_Latency=np.std(policy_latencies),
-                Avg_Power_Usage_W=np.mean(power_usages) if power_usages else None,
-                Std_Power_Usage_W=np.std(power_usages) if power_usages else None,
                 Avg_GPU_Memory_MB=np.mean(gpu_memories),
                 Std_GPU_Memory_MB=np.std(gpu_memories),
                 Avg_CPU_Memory_MB=np.mean(cpu_memories),
@@ -757,9 +724,6 @@ def run_trained_agent(args):
             'success_rate',
             'avg_policy_latency_ms',
             'std_policy_latency_ms',
-            'avg_power_usage_w',
-            'std_power_usage_w',
-            'idle_power_w',
             'avg_gpu_memory_increase_mb',
             'std_gpu_memory_increase_mb',
             'avg_cpu_memory_increase_mb',
@@ -869,7 +833,6 @@ def run_trained_agent(args):
 
     rollout_stats = []
     perf = PerformanceMonitor(device=device)
-    idle_power = perf.gpu_idle_power()
     for i in range(rollout_num_episodes):
         stats, traj = rollout(
             policy=policy, 
@@ -933,9 +896,6 @@ def run_trained_agent(args):
             'success_rate': avg_rollout_stats["Num_Success"] / rollout_num_episodes,
             'avg_policy_latency_ms': avg_rollout_stats["Avg_Policy_Latency"] * 1000.0,
             'std_policy_latency_ms': avg_rollout_stats["Std_Policy_Latency"] * 1000.0,
-            'avg_power_usage_w': avg_rollout_stats["Avg_Power_Usage_W"],
-            'std_power_usage_w': avg_rollout_stats["Std_Power_Usage_W"],
-            'idle_power_w': idle_power,
             'avg_gpu_memory_increase_mb': avg_rollout_stats["Avg_GPU_Memory_MB"],
             'std_gpu_memory_increase_mb': avg_rollout_stats["Std_GPU_Memory_MB"],
             'avg_cpu_memory_increase_mb': avg_rollout_stats["Avg_CPU_Memory_MB"],

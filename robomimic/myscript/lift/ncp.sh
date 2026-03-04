@@ -47,7 +47,7 @@ for SEED in "${SEEDS[@]}"; do
       python /work/robomimic/robomimic/scripts/train.py \
         --name "$EXP_NAME" \
         --dataset "$DATA_PATH" \
-        --config /work/robomimic/robomimic/exps/my_params/lift/ncp_u64.json \
+        --config /work/robomimic/robomimic/exps/my_params/lift/ncp_u${UNIT}.json \
         --num_epochs 100 \
         --seed "$SEED" \
         --units "$UNIT"; 

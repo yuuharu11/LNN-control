@@ -1599,6 +1599,7 @@ class LNNActorNetwork(nn.Module):
         ltc_kwargs["input_size"] = in_dim
        
         if self.core_type == "LTC":
+            print("Using LTC core for LNNActorNetwork")
             self.core = LTC(
                 input_size=ltc_kwargs["input_size"],
                 units=ltc_kwargs["units"],
@@ -1615,6 +1616,7 @@ class LNNActorNetwork(nn.Module):
             )
         
         elif self.core_type == "LTC_POST":
+            print("Using LTC_POST core for LNNActorNetwork")
             self.core = LTC_POST(
                 input_size=ltc_kwargs["input_size"],
                 units=ltc_kwargs["units"],

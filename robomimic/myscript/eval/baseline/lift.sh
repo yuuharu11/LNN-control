@@ -10,7 +10,7 @@ SEED=0
 CSV_BASE="/work/robomimic/result/u128"
 mkdir -p "$(dirname "$CSV_BASE")"
 
-model_path="/work/robomimic/bc_trained_models/lift/ncp-post/ph/unit128/seed1/models/model_epoch_50_low_dim_v15_success_0.0.pth"
+model_path="/work/robomimic/bc_trained_models/lift/mymodels/ncp-pure/ph/unit64/seed1/models/model_epoch_250_low_dim_v15_success_1.0.pth"
 name="temp"
 
 python /work/robomimic/robomimic/scripts/run_trained_agent.py \

@@ -288,7 +288,7 @@ class LTCCell(SequenceModule):
             # 3. Quantization mode
             if symmetric:
                 # Symmetric (signed)
-                qmax = 2 ** (n_bits - 1) - 1
+                qmax = 2 ** n_bits - 1
                 abs_max = nz.abs().max()
                 if abs_max < 1e-12: return params # Avoid div/0
                 
@@ -298,7 +298,7 @@ class LTCCell(SequenceModule):
 
             else:
                 # Asymmetric (unsigned)
-                qmax = 2 ** n_bits - 2
+                qmax = 2 ** n_bits - 1
                 min_val = nz.min()
                 max_val = nz.max()
                 if max_val - min_val < 1e-12: return params
