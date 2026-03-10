@@ -22,13 +22,28 @@ DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_6.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
 SEED=10
-gaussian=(0.025 0.035)
-CSV_BASE="/work/robomimic/csv/result/error/proposal/6bit/gaussian/u128"
-LOG_PATH="/work/robomimic/logs/quantize/best/calibration/u128"
+gaussian=(0.04 0.05 0.06 0.07)
+CSV_BASE="/work/robomimic/csv/result/error/LNN_standardization/6-5-6/gaussian/u128"
+LOG_PATH="/work/robomimic/logs/quantize/best/calibration/LNN_standardization/u128"
 mkdir -p ${CSV_BASE}
-MODEL_DIR="/work/robomimic/trained_models/lift/u128"
-for model_path in ${MODEL_DIR}/seed*_model_epoch_*_low_dim_v15_success_*; do
-  seed=$(grep -oP 'seed\K[0-9]+' <<<"$model_path" | head -n 1)
+MODEL_DIR="/work/robomimic/trained_models/LNN/u128"
+for model_path in ${MODEL_DIR}/*_model_epoch_*_low_dim_v15_success_*; do
+  if [[ -f "$model_path" ]]; then
+    # ファイル名からseed番号を抽出
+    filename=$(basename "$model_path")
+    base_name="$filename"
+    prefix_num="${base_name%%_*}"
+
+    seed=""
+    if [[ "$filename" =~ seed([0-9]+) ]]; then
+      seed="${BASH_REMATCH[1]}"
+    elif [[ "$prefix_num" =~ ^[0-9]+$ ]]; then
+      seed="$((10#$prefix_num))"
+    else
+      echo "[SKIP] seed could not be parsed: $base_name"
+      continue
+    fi
+  fi
 
   for g in "${gaussian[@]}"; do
     if [[ -f "$model_path" ]]; then

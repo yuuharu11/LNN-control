@@ -1,22 +1,21 @@
 #!/bin/bash
 set -euo pipefail
 
-# ===== Lift Task with Multiple Seeds & W&B Logging (Parallel) =====
-WANDB_PROJECT="robomimic_lift"
+# ===== Lift Task with Multiple Seeds (Parallel) =====
 MAX_JOBS="${MAX_JOBS:-10}"   # 同時実行数（例: MAX_JOBS=4 ./core.sh）
 
 echo "Lift Task Training with Multiple Seeds (Parallel)"
-echo "Project: ${WANDB_PROJECT}"
 echo "MAX_JOBS: ${MAX_JOBS}"
 echo ""
 
 # ===== Lift 設定リスト =====
 declare -a LIFT_CONFIGS=(
   "bc:lift/ph/low_dim"
+  "bc_rnn:lift/ph/low_dim"
 )
 
 # seed をループ
-SEEDS=(99)
+SEEDS=(11 12 13 14 15 16 17 18 19 20)
 
 TOTAL=$(( ${#LIFT_CONFIGS[@]} * ${#SEEDS[@]} ))
 echo "Total runs: ${TOTAL} (configs=${#LIFT_CONFIGS[@]} x seeds=${#SEEDS[@]})"
@@ -58,9 +57,6 @@ run_one() {
   python /work/robomimic/robomimic/scripts/train.py \
     --config "${config_path}" \
     --name "${exp_name}" \
-    --wandb_project "${WANDB_PROJECT}" \
-    --wandb_name "${wandb_name}" \
-    --wandb \
     --seed "${seed}" \
     --num_epochs 1000
 }
@@ -108,7 +104,4 @@ echo "All training finished"
 echo "=========================================="
 echo "Completed: ${COMPLETED}/${TOTAL}"
 echo "Failed:    ${FAILED}/${TOTAL}"
-echo ""
-echo "W&B Dashboard:"
-echo "https://wandb.ai/yuuharuharuya1120-japan/${WANDB_PROJECT}"
 echo ""

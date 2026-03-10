@@ -1,90 +1,58 @@
 #!/bin/bash
 set -euo pipefail
 
-# ===== 共通設定（必要に応じて変更）=====
-MODEL_ROOT="/work/robomimic/trained_models/LNN_standardization"
-DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_11.hdf5"
-OUT_ROOT="/work/robomimic/csv/result/quantize/LNN_standardization"
-LOG_ROOT="/work/robomimic/logs/quantize/best/calibration/LNN_standardization"
-
+# モデルファイルと共通パラメータ
+DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_9.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
-CALIBRATION_TIMES=3
-CALIBRATION_PERCENTILE=99.9
+SEED=1
+CSV_BASE="/work/robomimic/csv/result/quantize/LNN_standardization/proposal/6-5-5"
+LOG_PATH="/work/robomimic/logs/quantize/best/calibration/LNN_standardization/u256"
+mkdir -p ${CSV_BASE}
+MODEL_DIR="/work/robomimic/trained_models/LNN/u256"
+for model_path in ${MODEL_DIR}/*_model_epoch_*_low_dim_v15_success_*; do
+  if [[ -f "$model_path" ]]; then
+    # ファイル名からseed番号を抽出
+    filename=$(basename "$model_path")
+    base_name="$filename"
+    prefix_num="${base_name%%_*}"
 
-QUANTIZES=(2 3 4 5 6 7 8)
+    seed=""
+    if [[ "$filename" =~ seed([0-9]+) ]]; then
+      seed="${BASH_REMATCH[1]}"
+    elif [[ "$prefix_num" =~ ^[0-9]+$ ]]; then
+      seed="$((10#$prefix_num))"
+    else
+      echo "[SKIP] seed could not be parsed: $base_name"
+      continue
+    fi
 
-mkdir -p "$OUT_ROOT/CAM" "$LOG_ROOT"
-
-shopt -s nullglob globstar
-models=(
-  "$MODEL_ROOT"/u256/*.pth
-)
-
-if [[ ${#models[@]} -eq 0 ]]; then
-  echo "[ERROR] model not found: $MODEL_ROOT"
-  exit 1
-fi
-
-seed_idx=1
-for model_path in "${models[@]}"; do
-  [[ -f "$model_path" ]] || continue
-
-  base_name=$(basename "$model_path")
-  prefix_num="${base_name%%_*}"
-  
-  name="seed${prefix_num}"
-  # 先頭が数字でないファイルはスキップ
-  if [[ ! "$prefix_num" =~ ^[0-9]+$ ]]; then
-    echo "[SKIP] invalid prefix: $base_name"
-    continue
-  fi
-
-  # 10進数として比較（先頭0対策: 10#）
-  if (( 10#$prefix_num <= 10 )); then
-    echo "[SKIP] prefix <= 10: $base_name"
-    continue
-  fi
-  calib_path="${LOG_ROOT}/Seed${seed_idx}.json"
-  name="seed${prefix_num}"
-  echo "=========================================="
-  echo "Running model: ${name}"
-  echo "model path: ${model_path}"
-  echo "=========================================="
-
-  for quantize_bit in "${QUANTIZES[@]}"; do
-    csv_path="${OUT_ROOT}/CAM/${quantize_bit}bit.csv"
-
-    echo "[RUN] ${name} / quantize=${quantize_bit}"
-
+    name="u256_${filename}"
+    units="unit256"
+    echo "Running inference for ${name}..."
     python /work/robomimic/robomimic/scripts/run_trained_agent.py \
       --agent "$model_path" \
-      --name "$name" \
       --n_rollouts "$N_ROLLOUTS" \
       --horizon "$HORIZON" \
-      --seed "$seed_idx" \
+      --seed "$SEED" \
       --dataset_path "$DATASET_PATH" \
+      --name "$name" \
+      --calibration_times 3 \
+      --calibration_path "$LOG_PATH/Seed${seed}.json" \
+      --calibration_percentile 99.9 \
       --digital_SRAM_quantization 8 \
       --digital_RRAM_quantization 8 \
       --weight_quantization 6 \
       --LUT_quantization 5 \
-      --CAM_quantization 6 \
+      --CAM_quantization 5 \
       --ADC_quantization 5 \
       --DAC_quantization 8 \
-      --CAM_quantization "$quantize_bit" \
-      --calibration_times "$CALIBRATION_TIMES" \
-      --calibration_path "$calib_path" \
-      --calibration_percentile "$CALIBRATION_PERCENTILE" \
-      --csv_path "$csv_path"
-
-    echo "[DONE] ${name} / quantize=${quantize_bit}"
-    echo "------------------------------------------"
-  done
-
-  seed_idx=$((seed_idx + 1))
+      --csv_path "$CSV_BASE/${units}.csv"
+    echo "Completed: ${name}"
+    echo "----------------------------------------"
+  fi
 done
-
 echo "=========================================="
-echo "All experiments completed."
-echo "CSV: $OUT_ROOT/CAM"
+echo "All experiments completed!"
+echo "Results saved in ${CSV_BASE}"
 echo "=========================================="

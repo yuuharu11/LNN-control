@@ -1,19 +1,32 @@
 #!/bin/bash
+set -euo pipefail
 
 # モデルファイルと共通パラメータ
 DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_8.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
 SEED=0
-CSV_BASE="/work/robomimic/csv/result/quantize/proposal/6-5-6"
-LOG_PATH="/work/robomimic/logs/quantize/best/calibration/u64"
+CSV_BASE="/work/robomimic/csv/result/quantize/LNN_standardization/proposal/5-5-6"
+LOG_PATH="/work/robomimic/logs/quantize/best/calibration/LNN_standardization/u64"
 mkdir -p ${CSV_BASE}
-MODEL_DIR="/work/robomimic/trained_models/lift/u64"
-for model_path in ${MODEL_DIR}/seed*_model_epoch_*_low_dim_v15_success_*; do
+MODEL_DIR="/work/robomimic/trained_models/LNN/u64"
+for model_path in ${MODEL_DIR}/*_model_epoch_*_low_dim_v15_success_*; do
   if [[ -f "$model_path" ]]; then
     # ファイル名からseed番号を抽出
     filename=$(basename "$model_path")
-    seed=$(echo "$filename" | grep -o 'seed[0-9]\+' | grep -o '[0-9]\+')
+    base_name="$filename"
+    prefix_num="${base_name%%_*}"
+
+    seed=""
+    if [[ "$filename" =~ seed([0-9]+) ]]; then
+      seed="${BASH_REMATCH[1]}"
+    elif [[ "$prefix_num" =~ ^[0-9]+$ ]]; then
+      seed="$((10#$prefix_num))"
+    else
+      echo "[SKIP] seed could not be parsed: $base_name"
+      continue
+    fi
+
     name="u64_${filename}"
     units="unit64"
     echo "Running inference for ${name}..."
@@ -31,7 +44,7 @@ for model_path in ${MODEL_DIR}/seed*_model_epoch_*_low_dim_v15_success_*; do
       --digital_RRAM_quantization 8 \
       --weight_quantization 6 \
       --LUT_quantization 5 \
-      --CAM_quantization 6 \
+      --CAM_quantization 5 \
       --ADC_quantization 5 \
       --DAC_quantization 8 \
       --csv_path "$CSV_BASE/${units}.csv"

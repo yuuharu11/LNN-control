@@ -2,10 +2,10 @@
 set -euo pipefail
 
 # ===== 共通設定（必要に応じて変更）=====
-MODEL_ROOT="/work/robomimic/trained_models/LNN_standardization"
+MODEL_ROOT="/work/robomimic/trained_models/LNN"
 DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_6.hdf5"
 OUT_ROOT="/work/robomimic/csv/result/quantize/LNN_standardization"
-LOG_ROOT="/work/robomimic/logs/quantize/best/calibration/LNN_standardization"
+LOG_ROOT="/work/robomimic/logs/quantize/best/calibration/LNN_standardization/u128"
 
 N_ROLLOUTS=100
 HORIZON=400
@@ -14,11 +14,11 @@ CALIBRATION_PERCENTILE=99.9
 
 QUANTIZES=(2 3 4 5 6 7 8)
 
-mkdir -p "$OUT_ROOT/CAM" "$LOG_ROOT"
+mkdir -p "$OUT_ROOT/CAM/u128" "$LOG_ROOT"
 
 shopt -s nullglob globstar
 models=(
-  "$MODEL_ROOT"/u256/*.pth
+  "$MODEL_ROOT"/u128/*.pth
 )
 
 if [[ ${#models[@]} -eq 0 ]]; then
@@ -40,11 +40,6 @@ for model_path in "${models[@]}"; do
     continue
   fi
 
-  # 10進数として比較（先頭0対策: 10#）
-  if (( 10#$prefix_num <= 10 )); then
-    echo "[SKIP] prefix <= 10: $base_name"
-    continue
-  fi
   calib_path="${LOG_ROOT}/Seed${seed_idx}.json"
 
   echo "=========================================="
@@ -53,7 +48,7 @@ for model_path in "${models[@]}"; do
   echo "=========================================="
 
   for quantize_bit in "${QUANTIZES[@]}"; do
-    csv_path="${OUT_ROOT}/CAM/${quantize_bit}bit.csv"
+    csv_path="${OUT_ROOT}/CAM/u128/${quantize_bit}bit.csv"
 
     echo "[RUN] ${name} / quantize=${quantize_bit}"
 

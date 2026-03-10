@@ -22,14 +22,30 @@ DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_11.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
 SEED=10
-gaussian=(0.005 0.015)
-CSV_BASE="/work/robomimic/csv/result/error/proposal/3bit/gaussian/u64"
-LOG_PATH="/work/robomimic/logs/quantize/best/calibration/u64"
+shift=(0.0 0.01 0.02 0.03)
+CSV_BASE="/work/robomimic/csv/result/error/LNN_standardization/6-5-6/shift/u64"
+LOG_PATH="/work/robomimic/logs/quantize/best/calibration/LNN_standardization/u64"
 mkdir -p ${CSV_BASE}
-MODEL_DIR="/work/robomimic/trained_models/lift/u64"
-for model_path in ${MODEL_DIR}/seed*_model_epoch_*_low_dim_v15_success_*; do
-  seed=$(grep -oP 'seed\K[0-9]+' <<<"$model_path" | head -n 1)
-  for g in "${gaussian[@]}"; do
+MODEL_DIR="/work/robomimic/trained_models/LNN/u64"
+for model_path in ${MODEL_DIR}/*_model_epoch_*_low_dim_v15_success_*; do
+  if [[ -f "$model_path" ]]; then
+    # ファイル名からseed番号を抽出
+    filename=$(basename "$model_path")
+    base_name="$filename"
+    prefix_num="${base_name%%_*}"
+
+    seed=""
+    if [[ "$filename" =~ seed([0-9]+) ]]; then
+      seed="${BASH_REMATCH[1]}"
+    elif [[ "$prefix_num" =~ ^[0-9]+$ ]]; then
+      seed="$((10#$prefix_num))"
+    else
+      echo "[SKIP] seed could not be parsed: $base_name"
+      continue
+    fi
+  fi
+
+  for g in "${shift[@]}"; do
     if [[ -f "$model_path" ]]; then
       name="u64_${seed}"
       units="unit64"
@@ -40,7 +56,7 @@ for model_path in ${MODEL_DIR}/seed*_model_epoch_*_low_dim_v15_success_*; do
         --horizon "$HORIZON" \
         --seed "$SEED" \
         --dataset_path "$DATASET_PATH" \
-        --name "${name}_gaussian${g}" \
+        --name "${name}_shift${g}" \
         --calibration_times 3 \
         --calibration_path "$LOG_PATH/Seed${seed}.json" \
         --calibration_percentile 99.9 \
@@ -51,9 +67,9 @@ for model_path in ${MODEL_DIR}/seed*_model_epoch_*_low_dim_v15_success_*; do
         --CAM_quantization 6 \
         --ADC_quantization 8 \
         --DAC_quantization 5 \
-        --gaussian "${g}" \
-        --cell_bits 3 \
-        --csv_path "${CSV_BASE}/gaussian${g}.csv" 
+        --shift "${g}" \
+        --cell_bits 6 \
+        --csv_path "${CSV_BASE}/shift${g}.csv" 
       echo "Completed: ${name}"
       echo "----------------------------------------"
     fi
