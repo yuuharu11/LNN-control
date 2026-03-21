@@ -6,7 +6,7 @@ DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_8.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
 SEED=0
-CSV_BASE="/work/robomimic/csv/result/quantize/LNN_standardization/proposal/5-5-6"
+CSV_BASE="/work/robomimic/csv/result/quantize/LNN_standardization/proposal/6-6-6"
 LOG_PATH="/work/robomimic/logs/quantize/best/calibration/LNN_standardization/u64"
 mkdir -p ${CSV_BASE}
 MODEL_DIR="/work/robomimic/trained_models/LNN/u64"
@@ -43,9 +43,9 @@ for model_path in ${MODEL_DIR}/*_model_epoch_*_low_dim_v15_success_*; do
       --digital_SRAM_quantization 8 \
       --digital_RRAM_quantization 8 \
       --weight_quantization 6 \
-      --LUT_quantization 5 \
-      --CAM_quantization 5 \
-      --ADC_quantization 5 \
+      --LUT_quantization 6 \
+      --CAM_quantization 6 \
+      --ADC_quantization 6 \
       --DAC_quantization 8 \
       --csv_path "$CSV_BASE/${units}.csv"
     echo "Completed: ${name}"
