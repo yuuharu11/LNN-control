@@ -360,9 +360,9 @@ class LTCCell(SequenceModule):
             # 1. 重みの符号を取得 (正: 1, 負: -1, 0: 0)
             w_sign = torch.sign(w_norm)
             
-            # 2. ノイズの適用（常に0の方向へずらす）
+            # 2. ノイズの適用（シフトノイズは常に0の方向へずらす）
             #    元の式: w_norm - (大きさ * 符号)
-            #    正の時: w - (正の値) -> 小さくなる
+            #    正の時: w - (正の値) -> 小さくなる -> 0に近づく
             #    負の時: w - (負の値) -> w + 正の値 -> 0に近づく
             decay_amount = (noise + offset) * mask
             w_norm_noisy = w_norm - (decay_amount * w_sign)
