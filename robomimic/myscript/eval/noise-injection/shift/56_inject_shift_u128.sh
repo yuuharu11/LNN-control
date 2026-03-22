@@ -18,11 +18,11 @@ else
 fi
 
 # モデルファイルと共通パラメータ
-DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_16.hdf5"
+DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_8.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
-SEED=10
-shift=(0.08 0.09 0.10)
+SEED=1
+shift=(0.07)
 CSV_BASE="/work/robomimic/csv/result/error/LNN_standardization/6-6-6/shift/u128"
 LOG_PATH="/work/robomimic/logs/quantize/best/calibration/LNN_standardization/u128"
 mkdir -p ${CSV_BASE}

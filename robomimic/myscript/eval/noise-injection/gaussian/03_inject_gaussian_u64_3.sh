@@ -21,9 +21,9 @@ fi
 DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_4.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
-SEED=10
+SEED=1
 gaussian=(0.08 0.09 0.10)
-CSV_BASE="/work/robomimic/csv/result/error/LNN_standardization/6-6-6/gaussian/u64"
+CSV_BASE="/work/robomimic/csv/result/error/LNN_standardization/6-6-6/3bit/gaussian/u64"
 LOG_PATH="/work/robomimic/logs/quantize/best/calibration/LNN_standardization/u64"
 mkdir -p ${CSV_BASE}
 MODEL_DIR="/work/robomimic/trained_models/LNN/u64"
@@ -68,7 +68,7 @@ for model_path in ${MODEL_DIR}/*_model_epoch_*_low_dim_v15_success_*; do
         --ADC_quantization 8 \
         --DAC_quantization 6 \
         --gaussian "${g}" \
-        --cell_bits 6 \
+        --cell_bits 3 \
         --csv_path "${CSV_BASE}/gaussian${g}.csv" 
       echo "Completed: ${name}"
       echo "----------------------------------------"

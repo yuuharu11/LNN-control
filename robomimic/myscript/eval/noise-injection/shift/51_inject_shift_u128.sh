@@ -21,8 +21,8 @@ fi
 DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_3.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
-SEED=10
-shift=(0.0 0.01 0.02 0.03)
+SEED=1
+shift=(0.02)
 CSV_BASE="/work/robomimic/csv/result/error/LNN_standardization/6-6-6/shift/u128"
 LOG_PATH="/work/robomimic/logs/quantize/best/calibration/LNN_standardization/u128"
 mkdir -p ${CSV_BASE}

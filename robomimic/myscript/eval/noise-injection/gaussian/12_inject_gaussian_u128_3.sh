@@ -18,15 +18,15 @@ else
 fi
 
 # モデルファイルと共通パラメータ
-DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_2.hdf5"
+DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_7.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
 SEED=1
-gaussian=(0.0 0.01 0.02 0.03)
-CSV_BASE="/work/robomimic/csv/result/error/LNN_standardization/6-6-6/3bit/gaussian/u64"
-LOG_PATH="/work/robomimic/logs/quantize/best/calibration/LNN_standardization/u64"
+gaussian=(0.08 0.09 0.10)
+CSV_BASE="/work/robomimic/csv/result/error/LNN_standardization/6-6-6/3bit/gaussian/u128"
+LOG_PATH="/work/robomimic/logs/quantize/best/calibration/LNN_standardization/u128"
 mkdir -p ${CSV_BASE}
-MODEL_DIR="/work/robomimic/trained_models/LNN/u64"
+MODEL_DIR="/work/robomimic/trained_models/LNN/u128"
 for model_path in ${MODEL_DIR}/*_model_epoch_*_low_dim_v15_success_*; do
   if [[ -f "$model_path" ]]; then
     # ファイル名からseed番号を抽出
@@ -47,8 +47,8 @@ for model_path in ${MODEL_DIR}/*_model_epoch_*_low_dim_v15_success_*; do
 
   for g in "${gaussian[@]}"; do
     if [[ -f "$model_path" ]]; then
-      name="u64_${seed}"
-      units="unit64"
+      name="u128_${seed}"
+      units="unit128"
       echo "Running inference for ${name}..."
       python /work/robomimic/robomimic/scripts/run_trained_agent.py \
         --agent "$model_path" \
