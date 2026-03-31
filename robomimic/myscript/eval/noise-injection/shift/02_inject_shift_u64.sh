@@ -18,12 +18,12 @@ else
 fi
 
 # モデルファイルと共通パラメータ
-DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_2.hdf5"
+DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_12.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
-SEED=10
-shift=(0.0 0.01 0.02 0.03)
-CSV_BASE="/work/robomimic/csv/result/error/LNN_standardization/6-6-6/shift/u64"
+SEED=1
+shift=(0.08 0.09 0.10)
+CSV_BASE="/work/robomimic/csv/result/error/LNN_standardization/6-6-6/3bit/shift/u64"
 LOG_PATH="/work/robomimic/logs/quantize/best/calibration/LNN_standardization/u64"
 mkdir -p ${CSV_BASE}
 MODEL_DIR="/work/robomimic/trained_models/LNN/u64"
@@ -68,7 +68,7 @@ for model_path in ${MODEL_DIR}/*_model_epoch_*_low_dim_v15_success_*; do
         --ADC_quantization 8 \
         --DAC_quantization 6 \
         --shift "${s}" \
-        --cell_bits 6 \
+        --cell_bits 3 \
         --csv_path "${CSV_BASE}/shift${s}.csv" 
       echo "Completed: ${name}"
       echo "----------------------------------------"

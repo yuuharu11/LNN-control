@@ -3,7 +3,7 @@
 # ===== Multiple Seeds & Datasets & Units Training Script =====
 # NCP モデルを複数の seed、dataset、units で学習します
 
-SEEDS=(15 16 17 18 19 20 21)
+SEEDS=(107 108 109 110)
 WANDB_PROJECT="robomimic_lift"
 DATASETS=(
     "/work/robomimic/datasets/lift/ph/low_dim_v15.hdf5"
@@ -39,7 +39,7 @@ for SEED in "${SEEDS[@]}"; do
       
       # ✅ wandb_name と exp_name に UNIT を含める
       WANDB_NAME="ncp_u${UNIT}_seed${SEED}_${DATASET_NAME}"
-      EXP_NAME="lift/ncp-post/${DATASET_NAME}/unit${UNIT}/seed${SEED}"
+      EXP_NAME="lift/mymodels/lnn/${DATASET_NAME}/unit${UNIT}/seed${SEED}"
       
       echo "[$COUNT/$TOTAL] 🌱 Starting: seed=$SEED, dataset=$DATASET_NAME, unit=$UNIT"
       echo "   wandb_name: $WANDB_NAME"

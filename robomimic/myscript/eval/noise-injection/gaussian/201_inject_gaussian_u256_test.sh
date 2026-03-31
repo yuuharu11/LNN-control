@@ -18,18 +18,17 @@ else
 fi
 
 # モデルファイルと共通パラメータ
-DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_8.hdf5"
+DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_9.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
-SEED=1
-gaussian=(0.0 0.01 0.02 0.03)
-CSV_BASE="/work/robomimic/csv/result/error/LNN_standardization/6-6-6/3bit/gaussian/u256"
-LOG_PATH="/work/robomimic/logs/quantize/best/calibration/LNN_standardization/u256"
+SEED=0
+gaussian=(0.0)
+CSV_BASE="/work/robomimic/csv/result/error/LNN_standardization/6-6-6/tmp"
+LOG_PATH="/work/robomimic/logs/quantize/best/calibration/LNN/u256"
 mkdir -p ${CSV_BASE}
 MODEL_DIR="/work/robomimic/trained_models/LNN/u256"
 for model_path in ${MODEL_DIR}/*_model_epoch_*_low_dim_v15_success_*; do
   if [[ -f "$model_path" ]]; then
-    # ファイル名からseed番号を抽出
     filename=$(basename "$model_path")
     base_name="$filename"
     prefix_num="${base_name%%_*}"
@@ -43,6 +42,11 @@ for model_path in ${MODEL_DIR}/*_model_epoch_*_low_dim_v15_success_*; do
       echo "[SKIP] seed could not be parsed: $base_name"
       continue
     fi
+  fi
+
+  if [[ "$seed" != "7" ]]; then
+    echo "[SKIP] not seed 7 is skipped for testing purposes: $base_name"
+    continue
   fi
 
   for g in "${gaussian[@]}"; do
