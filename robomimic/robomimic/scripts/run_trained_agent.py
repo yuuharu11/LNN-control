@@ -419,6 +419,10 @@ def load_calibration(
 
 def calibrate_states_observation(policy, env, rollout_horizon, args, write_dataset, video_writer, device, obs_keys, calibration_times, calibration_path, percentile):
     """ Calibrate observation states for quantization """
+    calibration_dir = os.path.dirname(calibration_path)
+    if calibration_dir:
+        os.makedirs(calibration_dir, exist_ok=True)
+
     if os.path.exists(calibration_path):
         print(f"[Calibrate] Calibration file already exists at: {calibration_path}")
         x_lo, x_hi = load_calibration(
@@ -453,6 +457,13 @@ def calibrate_states_observation(policy, env, rollout_horizon, args, write_datas
                 obs_keys=obs_keys,
                 lnn_record=args.lnn_record,
                 observation_noise=args.observation_noise,
+            )
+            print(f"[Calibrate] Saved calibration data for rollout to {calibration_path}")
+
+        if not os.path.exists(calibration_path):
+            raise FileNotFoundError(
+                f"Calibration file was not generated: {calibration_path}. "
+                "Check whether LTCCell calibration dump is enabled in the forward path."
             )
             
         x_lo, x_hi = load_calibration(

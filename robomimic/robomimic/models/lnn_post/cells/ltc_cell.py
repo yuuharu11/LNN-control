@@ -758,9 +758,8 @@ class LTCCell(SequenceModule):
 
             # for logging LUT activations distribution
             if self.calibration_path is not None:
-                if np.random.random() < 0.01:
-                    # self.dump_lut_values(x[:,150], activate_x[:,150], w_denominator, w_numerator, path=self.calibration_path, bins=100, append=True)
-                    self.dump_lut_values(x, activate_x, w_denominator, w_numerator, path=self.calibration_path, bins=100, append=True)
+                # self.dump_lut_values(x[:,150], activate_x[:,150], w_denominator, w_numerator, path=self.calibration_path, bins=100, append=True)
+                self.dump_lut_values(x, activate_x, w_denominator, w_numerator, path=self.calibration_path, bins=100, append=True)
 
             if self.ADC_quantization is not None:
                 w_numerator = self.ptq_range(w_numerator, n_bits=self.ADC_quantization, clip_min=self.clip_rev_sum_min, clip_max=self.clip_rev_sum_max, name=(f"w_numerator_step{t}"))

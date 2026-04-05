@@ -23,7 +23,7 @@ N_ROLLOUTS=100
 HORIZON=400
 SEED=0
 gaussian=(0.0)
-CSV_BASE="/work/robomimic/csv/result/error/LNN_standardization/6-6-6/tmp"
+CSV_BASE="/work/robomimic/csv/result/error/LNN/6-6-6/tmp"
 LOG_PATH="/work/robomimic/logs/quantize/best/calibration/LNN/u256"
 mkdir -p ${CSV_BASE}
 MODEL_DIR="/work/robomimic/trained_models/LNN/u256"
@@ -43,6 +43,10 @@ for model_path in ${MODEL_DIR}/*_model_epoch_*_low_dim_v15_success_*; do
       continue
     fi
   fi
+  if [[ "$seed" -le 20 ]]; then
+    echo "[SKIP] seed ${seed} is skipped for testing purposes: $base_name"
+    continue
+  fi
 
   for g in "${gaussian[@]}"; do
     if [[ -f "$model_path" ]]; then
@@ -56,7 +60,7 @@ for model_path in ${MODEL_DIR}/*_model_epoch_*_low_dim_v15_success_*; do
         --seed "$SEED" \
         --dataset_path "$DATASET_PATH" \
         --name "${name}_gaussian${g}" \
-        --calibration_times 3 \
+        --calibration_times 1 \
         --calibration_path "$LOG_PATH/Seed${seed}.json" \
         --calibration_percentile 99.9 \
         --digital_SRAM_quantization 8 \

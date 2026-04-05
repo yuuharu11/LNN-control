@@ -22,12 +22,11 @@ fi
 # --- Sweep settings ---
 MODEL_DIR="/work/robomimic/trained_models/LNN/u256"
 DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_10.hdf5"
-N_ROLLOUTS=20
+N_ROLLOUTS=100
 HORIZON=400
-SEED=0
+SEED=3
 
-# ★ 修正：percentileは99系
-CALIBRATION_PERCENTILES=(95.0 99.0 99.5 99.9)
+CALIBRATION_PERCENTILES=(100.0 99.99 99.9)
 
 # ★ 指定どおり
 CALIBRATION_TIMES_LIST=(1 3 5)
@@ -35,12 +34,14 @@ CALIBRATION_TIMES_LIST=(1 3 5)
 MAX_MODEL_COUNT=10
 TARGET_MODEL_SEED=""
 
-CSV_BASE="/work/robomimic/csv/result/calibration_sweep/LNN/u256"
-LOG_BASE="/work/robomimic/logs/quantize/best/calibration/LNN/u256/sweep_times"
+CSV_BASE="/work/robomimic/csv/result/calibration_sweep"
+LOG_BASE="/work/robomimic/logs/quantize/calibration/LNN/sweep"
+
+# Ensure base output directories exist before writing files
 mkdir -p "${CSV_BASE}" "${LOG_BASE}"
 
 # ★ 平均のみ
-SUMMARY_CSV="${CSV_BASE}/summary_mean_over_5seeds.csv"
+SUMMARY_CSV="${CSV_BASE}/summary.csv"
 echo "percentile,calibration_times,mean_success_rate" > "${SUMMARY_CSV}"
 
 index_tmp="$(mktemp)"
