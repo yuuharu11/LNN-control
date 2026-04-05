@@ -24,7 +24,7 @@ HORIZON=400
 SEED=1
 shift=(0.08 0.09 0.10)
 CSV_BASE="/work/robomimic/csv/result/error/LNN_standardization/6-6-6/3bit/shift/u256"
-LOG_PATH="/work/robomimic/logs/quantize/best/calibration/LNN_standardization/u256"
+LOG_PATH="/work/robomimic/logs/quantize/best/calibration/LNN/u256/99.9_1"
 mkdir -p ${CSV_BASE}
 MODEL_DIR="/work/robomimic/trained_models/LNN/u256"
 for model_path in ${MODEL_DIR}/*_model_epoch_*_low_dim_v15_success_*; do
