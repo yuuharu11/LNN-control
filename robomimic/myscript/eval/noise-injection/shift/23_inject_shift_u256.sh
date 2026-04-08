@@ -18,15 +18,15 @@ else
 fi
 
 # モデルファイルと共通パラメータ
-DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_3.hdf5"
+DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_16.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
-SEED=1
-shift=(0.06)
-CSV_BASE="/work/robomimic/csv/result/error/LNN_standardization/6-6-6/3bit/shift/u256"
-LOG_PATH="/work/robomimic/logs/quantize/best/calibration/LNN/u256/99.9_1"
+SEED=0
+shift=(0.07 0.08)
+CSV_BASE="/work/robomimic/csv/result/error/LNN/6-6-6/3bit/99.9_1/shift/u256"
+LOG_PATH="/work/robomimic/logs/quantize/calibration/LNN/u256"
 mkdir -p ${CSV_BASE}
-MODEL_DIR="/work/robomimic/trained_models/LNN/u256"
+MODEL_DIR="/work/robomimic/trained_models/LNN/u256/new"
 for model_path in ${MODEL_DIR}/*_model_epoch_*_low_dim_v15_success_*; do
   if [[ -f "$model_path" ]]; then
     # ファイル名からseed番号を抽出

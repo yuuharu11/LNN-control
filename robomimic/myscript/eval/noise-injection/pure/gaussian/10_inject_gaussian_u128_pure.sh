@@ -18,15 +18,15 @@ else
 fi
 
 # モデルファイルと共通パラメータ
-DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_11.hdf5"
+DATASET_PATH="/work/robomimic/datasets/lift/ph/low_dim_v15_2.hdf5"
 N_ROLLOUTS=100
 HORIZON=400
 SEED=0
-shift=(0.0 0.01 0.02 0.03)
-CSV_BASE="/work/robomimic/csv/result/error/LNN/6-6-6/3bit/99.9_1/shift/u64"
-LOG_PATH="/work/robomimic/logs/quantize/calibration/LNN/u64"
+gaussian=(0.00 0.01 0.02 0.03)
+CSV_BASE="/work/robomimic/csv/result/error/LNN/pure/gaussian/u128"
+LOG_PATH="/work/robomimic/logs/quantize/calibration/old/u128"
 mkdir -p ${CSV_BASE}
-MODEL_DIR="/work/robomimic/trained_models/LNN/u64"
+MODEL_DIR="/work/robomimic/trained_models/old/lift/u128"
 for model_path in ${MODEL_DIR}/*_model_epoch_*_low_dim_v15_success_*; do
   if [[ -f "$model_path" ]]; then
     # ファイル名からseed番号を抽出
@@ -45,10 +45,10 @@ for model_path in ${MODEL_DIR}/*_model_epoch_*_low_dim_v15_success_*; do
     fi
   fi
 
-  for s in "${shift[@]}"; do
+  for g in "${gaussian[@]}"; do
     if [[ -f "$model_path" ]]; then
-      name="u64_${seed}"
-      units="unit64"
+      name="u128_${seed}"
+      units="unit128"
       echo "Running inference for ${name}..."
       python /work/robomimic/robomimic/scripts/run_trained_agent.py \
         --agent "$model_path" \
@@ -56,20 +56,9 @@ for model_path in ${MODEL_DIR}/*_model_epoch_*_low_dim_v15_success_*; do
         --horizon "$HORIZON" \
         --seed "$SEED" \
         --dataset_path "$DATASET_PATH" \
-        --name "${name}_shift${s}" \
-        --calibration_times 1 \
-        --calibration_path "$LOG_PATH/Seed${seed}.json" \
-        --calibration_percentile 99.9 \
-        --digital_SRAM_quantization 8 \
-        --digital_RRAM_quantization 8 \
-        --weight_quantization 6 \
-        --LUT_quantization 6 \
-        --CAM_quantization 6 \
-        --ADC_quantization 8 \
-        --DAC_quantization 6 \
-        --shift "${s}" \
-        --cell_bits 3 \
-        --csv_path "${CSV_BASE}/shift${s}.csv" 
+        --name "${name}_gaussian${g}" \
+        --gaussian "${g}" \
+        --csv_path "${CSV_BASE}/gaussian${g}.csv" 
       echo "Completed: ${name}"
       echo "----------------------------------------"
     fi

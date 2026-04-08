@@ -23,10 +23,10 @@ N_ROLLOUTS=100
 HORIZON=400
 SEED=0
 gaussian=(0.04 0.05 0.06 0.07)
-CSV_BASE="/work/robomimic/csv/result/error/LNN/6-6-6/3bit/99.9_1/gaussian/u256/100-1"
-LOG_PATH="/work/robomimic/logs/quantize/best/calibration/LNN/u256/99.9_1"
+CSV_BASE="/work/robomimic/csv/result/error/LNN/6-6-6/3bit/99.9_1/gaussian/u256"
+LOG_PATH="/work/robomimic/logs/quantize/calibration/LNN/u256"
 mkdir -p ${CSV_BASE}
-MODEL_DIR="/work/robomimic/trained_models/LNN/u256/addition"
+MODEL_DIR="/work/robomimic/trained_models/LNN/u256/new"
 for model_path in ${MODEL_DIR}/*_model_epoch_*_low_dim_v15_success_*; do
   if [[ -f "$model_path" ]]; then
     # ファイル名からseed番号を抽出

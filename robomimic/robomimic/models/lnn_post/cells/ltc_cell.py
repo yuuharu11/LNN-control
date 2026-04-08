@@ -38,6 +38,7 @@ class LTCCell(SequenceModule):
         digital_RRAM_quantization: Optional[int] = None,
         digital_SRAM_quantization: Optional[int] = None,
         weight_quantization: Optional[int] = None,
+        weight_error: Optional[int] = False,
         CAM_quantization: Optional[int] = None,
         LUT_quantization: Optional[int] = None,
         ADC_quantization: Optional[int] = None,
@@ -98,6 +99,7 @@ class LTCCell(SequenceModule):
         self.digital_RRAM_quantization = digital_RRAM_quantization
         self.digital_SRAM_quantization = digital_SRAM_quantization
         self.weight_quantization = weight_quantization
+        self.weight_error = weight_error
         self.ADC_quantization = ADC_quantization
         self.DAC_quantization = DAC_quantization
         self.calibration_path = calibration_path
@@ -707,6 +709,11 @@ class LTCCell(SequenceModule):
         if gaussian is not None or shift is not None:
             self._params["concatenated_w"].copy_(self.injection_error_mlc(self._params["concatenated_w"], sigma=gaussian, shift=shift, symmetric=False, cell_bits=cell_bits))
             self._params["concatenated_w_rev"].copy_(self.injection_error_mlc(self._params["concatenated_w_rev"], sigma=gaussian, shift=shift, symmetric=True, cell_bits=cell_bits))
+    
+    def _weight_error(self, gaussian=0.0, shift=0.0):
+        if gaussian!=0.0 or shift != 0.0:
+            self._params["concatenated_w"].copy_(self.injection_error(self._params["concatenated_w"], sigma=gaussian, shift=shift))
+            self._params["concatenated_w_rev"].copy_(self.injection_error(self._params["concatenated_w_rev"], sigma=gaussian, shift=shift))
 
     def _sigmoid(self, v_pre, mu, sigma):
         v_pre = torch.unsqueeze(v_pre, -1)  

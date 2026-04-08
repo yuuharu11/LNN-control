@@ -804,6 +804,8 @@ def run_trained_agent(args):
                 ltc_cell.weight_quantization = int(args.weight_quantization)
                 print(f"[Quantize] weight_quantization = {ltc_cell.weight_quantization}")
                 ltc_cell._weight_quantization(weight_quantization=ltc_cell.weight_quantization, gaussian=args.gaussian, shift=args.shift, cell_bits=args.cell_bits)
+            else:
+                ltc_cell._weight_error(gaussian=args.gaussian, shift=args.shift)
             if args.digital_SRAM_quantization is not None:
                 ltc_cell.digital_SRAM_quantization = int(args.digital_SRAM_quantization)
                 print(f"[Quantize] digital_SRAM_quantization = {ltc_cell.digital_SRAM_quantization}")
