@@ -1,4 +1,4 @@
-# Robosuite + Robomimic + LTC 実験リポジトリ
+# Robosuite環境におけるLiquid Neural Networksによる低レベル制御に関する実験リポジトリ
 
 MuJoCo ロボットシミュレーション上で、LTC (Liquid Time-Constant) / CfC などのニューラルネットワークを用いた **模倣学習** を行う実験環境です。
 
